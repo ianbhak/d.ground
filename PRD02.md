@@ -1,0 +1,429 @@
+# PRD — 멀티 RAG 챗봇 플랫폼 (사내명: construction-notice)
+
+작성일: 2026-05-20
+최종 수정: 2026-05-20 (v1.2 — 모더레이션 + 민감정보 정책 반영)
+작성자: ianbhak@gmail.com
+
+---
+
+## 1. 개요
+
+SCI급 학술논문, 건설 입찰공고/성능요구서 등 도메인 문서를 기반으로 한 **멀티테넌트 RAG 챗봇 플랫폼**.
+각 어드민/운영진이 **자신만의 독립된 RAG 챗봇(이하 "Room")**을 개설하고, 초대 또는 비밀번호로 멤버를 받아 운영할 수 있다.
+
+### 핵심 가치
+- 어드민이 코드 없이 자기 문서로 RAG 챗봇을 즉시 운영
+- 방 단위 ACL — 외부에 노출되지 않는 사적 챗봇 공간
+- 운영진(슈퍼 어드민)이 전체 시스템을 일괄 관리
+- **방 단위 비용 가시화** — 어드민이 모델 선택 후 실제 사용량/비용 확인 가능
+- **문서 dedup** — 동일 PDF 공유 시 임베딩/스토리지 비용 절감
+
+---
+
+## 2. 사용자 역할
+
+| 역할 | 권한 |
+|---|---|
+| **Super Admin (운영진)** | 전체 방 조회/생성/삭제, 모든 유저 관리, 어드민 권한 부여, 시스템 한도 설정 |
+| **Room Admin (어드민)** | 자신이 만든/배정된 방 운영 — 문서 업로드, 시스템 프롬프트/모델 설정, 멤버 초대/삭제, 비밀번호 설정, 방 한도 조정 (시스템 hard cap 이내) |
+| **Member (일반 유저)** | 자신이 속한 방 목록 확인, 챗봇과 대화 (1:1/공용 탭 전환), 자신의 1:1 대화 기록 열람 |
+| **Guest (비로그인)** | 로그인 페이지만 접근 |
+
+> **로그인은 Google OAuth만 지원.** 별도 회원가입 없음. 첫 로그인 시 자동으로 User 레코드 생성, 기본 역할 = Member.
+> **Super Admin 지정**은 `SUPER_ADMINS` 환경 변수의 이메일 화이트리스트.
+
+---
+
+## 3. 핵심 기능
+
+### 3.1 인증
+- Google OAuth 단일 옵션
+- 세션 7일 유지, 로그아웃 지원
+- `SUPER_ADMINS=email1,email2,...` 환경 변수로 지정된 이메일은 첫 로그인 시 자동 Super Admin
+
+### 3.2 Room (독립 RAG 챗봇)
+
+**개설**
+- Room Admin 이상이 방 개설 가능
+- 입력: 방 이름, 설명, (선택) 비밀번호, 시스템 프롬프트, 모델 (기본 Sonnet), 임베딩 모델 (시스템 디폴트)
+
+**접근 제어 (방마다 설정)**
+- **초대형**: Room Admin이 이메일로 멤버 추가 → 해당 유저의 "내 방 목록"에 노출
+- **비밀번호형**: 방 코드(URL) + 비밀번호 → 자동 멤버 등록
+- **혼합형**: 비밀번호 + 초대 둘 다 허용
+- 방은 기본 **목록 비공개**
+
+**문서 관리 (Room Admin)**
+- PDF, DOCX, TXT, MD 업로드 (v1은 PDF 우선)
+- 업로드 시 **SHA256 해시 계산 → 시스템 전역 dedup 검사** (§3.6 참고)
+- 자동 청킹 → 임베딩 → 방 매핑 등록
+- 업로드 목록 보기, 방에서 detach, 재인덱싱 (해시 동일하면 임베딩 재사용)
+- **방별 쿼터** 표시 (사용량/한도, 한도 조정 가능)
+
+**RAG 설정 (Room Admin)**
+- 시스템 프롬프트 편집
+- 모델 선택: `claude-sonnet-4-6` (기본) / `claude-opus-4-7` / `claude-haiku-4-5`
+- top-k, temperature
+- 임베딩 모델은 시스템 디폴트 사용 (방별 변경 불가 — dedup 호환성 위해)
+
+### 3.3 채팅 — 듀얼 모드 (탭 전환)
+
+방에 입장하면 좌측에 두 개 탭:
+
+**[탭 1] 공용 스레드 (Shared)**
+- 방 멤버 전체가 같은 대화 화면을 공유
+- 누구나 챗봇에게 질문 가능, 모든 멤버가 메시지(질문/답변)를 봄
+- 메시지에 발화자(이름/이메일) 표시
+- **Room Admin은 공용 스레드의 임의 메시지(멤버 발화 포함) 삭제 가능** — 삭제는 soft delete + 감사 로그
+- 방당 1개의 공용 스레드 (v1) → 추후 다중 스레드 확장 가능
+
+**[탭 2] 내 채팅 (Private)**
+- 각자 챗봇과 1:1 대화 — 다른 멤버는 못 봄
+- 다중 스레드 지원 (좌측 스레드 목록)
+- 스레드 이름 자동 생성 + 수동 변경
+
+> 공통: 응답은 항상 스트리밍, RAG 검색 결과 출처(문서명 + 페이지) 표시.
+> 공통: 같은 방 문서/임베딩 인덱스 사용 — 모드만 다름.
+
+### 3.4 어드민 콘솔
+
+**Room Admin 콘솔 (자기 방 한정)**
+- 멤버 목록 / 추가 / 삭제 / 강퇴
+- 비밀번호 변경 / 비활성화
+- 문서 업로드 / detach / 재인덱싱 — dedup 표시 ("이 문서는 N개 방에서 공유 중")
+- 시스템 프롬프트 / 모델 / top-k / temperature
+- **사용량 대시보드**: 메시지 수, 입출력 토큰, 추정 비용 (USD/KRW), 모델별 분해
+- **쿼터 조정**: 문서 수, 총 용량 (시스템 hard cap 이내)
+
+**Super Admin 콘솔**
+- 전체 방 목록 / 강제 삭제
+- 전체 유저 목록 / 역할 변경 / 정지
+- **시스템 hard cap 설정** (방당 최대 문서 수, 최대 용량, 일일 토큰 한도)
+- 전역 비용/사용량 대시보드 (월별 토큰, 임베딩, 스토리지)
+- 공유 문서 라이브러리 조회 (어느 문서가 어느 방에 attached)
+
+### 3.5 비용 추적 & 가시화
+
+**저장**
+- 메시지마다 `model`, `tokens_in`, `tokens_out`, `cache_read_tokens`, `cache_write_tokens` 저장
+- 임베딩 호출 시 `embedding_tokens` 저장 (Document/SharedDocument 단위)
+
+**계산**
+- 모델/임베딩 단가 테이블을 코드 상수로 관리 (USD per 1M tokens)
+- Room Admin 콘솔에서 방별 일일/누적 비용 표시
+- (예상) Sonnet 4.6 기준 메시지 평균 비용 ~$0.014 (input 2K + output 500 토큰 기준)
+
+**한도**
+- 방별 일일 토큰 한도 (Super Admin이 시스템 디폴트, Room Admin이 방별 조정)
+- 한도 초과 시 응답 거부 + 어드민 알림
+
+### 3.6 문서 중복 처리 — SharedDocument 패턴
+
+**문제**: 같은 PDF(예: 성수3 입찰공고)가 여러 방에 업로드될 때 임베딩 비용/스토리지/시간 낭비.
+
+**해결**: 컨텐츠 해시 기반 시스템 전역 dedup.
+
+**플로우**
+1. 어드민이 PDF 업로드
+2. 서버에서 SHA256 계산
+3. `SharedDocument` 테이블에 해시 존재 → 청크/임베딩 재사용, `RoomDocument` 매핑만 새로 생성
+4. 없으면 → 새로 청킹/임베딩 후 SharedDocument + 첫 RoomDocument 매핑 생성
+5. 어드민 UI에 "공유 문서 — N개 방에서 사용 중" 표시
+
+**보안/격리**
+- RAG 쿼리는 **항상** `room_documents` 매핑을 join — 다른 방 문서가 절대 검색되지 않음
+- 쿼리 헬퍼 함수로 래핑 (room_id 누락 시 throw)
+- 방에서 detach해도 SharedDocument는 다른 방이 참조 중이면 유지, 마지막 참조 제거되면 삭제
+
+**제약**
+- Dedup의 전제는 **임베딩 모델 동일** — 그래서 임베딩 모델은 시스템 디폴트 1개로 고정. 변경 시 전체 재인덱싱 필요.
+- 텍스트 추출/청킹 알고리즘도 동일해야 함 — 버전 마이그레이션 시 재인덱싱.
+
+**기대 효과**
+- 현재 폴더의 PDF 5종이 여러 방에서 재사용된다면 임베딩 비용 N분의 1, 인덱싱 시간도 단축.
+
+### 3.7 민감정보 처리 정책
+
+건설 입찰공고 도메인은 **개인정보(주민번호/연락처 등)** + **법인 정보(사업자번호/도장)** + **사업적 민감 정보(견적가/입찰 전략)**가 혼재. 사업적 민감 정보는 챗봇의 핵심 컨텐츠이므로 일률 마스킹 불가. → **계층화 + 어드민 판단** 모델 채택.
+
+#### L1. 업로드 시 자동 PII 스캔 (v1)
+- 한국 패턴 정규식으로 검출:
+  - 주민번호 (`\d{6}-?\d{7}`)
+  - 휴대전화 (`01[0-9]-?\d{3,4}-?\d{4}`)
+  - 이메일 (RFC 5322 단순 패턴)
+  - 계좌번호 (은행별 자릿수 패턴)
+  - 신용카드 (`\d{4}-?\d{4}-?\d{4}-?\d{4}`)
+  - 사업자등록번호 (`\d{3}-?\d{2}-?\d{5}`)
+- 비용 무료, 지연 무시할 수준
+- 위치 정보(문서 페이지, 오프셋)와 함께 저장
+
+#### L2. 어드민 결정 UI (v1)
+- 검출 결과 표시 → 어드민이 선택:
+  - **(a) 자동 마스킹 후 인덱싱** — 원본은 SharedDocument에 암호화 보관, 청크/임베딩/응답엔 마스킹 버전
+  - **(b) 그대로 업로드** — 사업적 민감 정보가 챗봇 핵심인 경우
+  - **(c) 업로드 취소**
+- 마스킹 형식: `[주민번호 마스킹]`, `[연락처 마스킹]` 등 (타입 표시 + 원본 길이 보존)
+
+#### L3. 방 민감도 등급 (v1.5)
+- 어드민이 방 생성 시 라벨 선택: `public` / `internal` / `confidential`
+- `confidential` 방은 시스템 프롬프트에 "외부 공유 금지, 인용 시 출처만" 자동 주입
+- 라벨은 UI 표시 + 감사 로그 태깅용 — 실제 ACL은 멤버십이 결정
+
+#### L4. 응답 출력 필터 (v1.5)
+- LLM 응답 스트림에서 같은 정규식으로 1회 더 검사 — 안전망
+- 검출 시 마스킹 후 사용자에 전송 + 어드민 알림
+
+#### L5. 운영 정책 (v1)
+- **업로드 시 책임 동의 체크박스**: "이 문서에 민감정보가 포함된 경우 책임은 업로더에게 있으며, 플랫폼은 마스킹/보안 조치를 합리적 범위에서 제공합니다"
+- **Anthropic API zero-retention**: 가능한 경우 활성화 (대규모 계약 기준) — v1은 기본 30일 retention
+- **Voyage AI 데이터 처리**: 임베딩 API는 원문을 학습 데이터로 사용하지 않음 — 약관 페이지 링크 명시
+- **감사 로그**: 업로드/조회/삭제/마스킹 액션 전체 기록 (90일 보관)
+- **방 삭제 시 데이터 처리**:
+  - 방 삭제 → 30일 grace period (복구 가능)
+  - 30일 후 영구 삭제 — 마지막 참조면 SharedDocument도 삭제
+  - 감사 로그는 90일 별도 보관 후 익명화
+- **PII 정책 페이지**: 별도 문서로 사용자에 공개 (서비스 약관과 분리)
+
+#### 비포함 (의도적 배제)
+- AI 기반 PII 검출 — 비용/지연 대비 정규식이 한국 패턴에 충분
+- 클라이언트 사이드 암호화 — RAG 검색 불가
+- 외부 DLP 서비스 (Nightfall, Skyflow 등) — v1 규모 대비 과투자
+- 자동 일괄 마스킹 — 사업적 민감 정보 손실
+
+### 3.8 쿼터 (디폴트)
+
+폴더 내 PDF 총합 ~220MB 기준으로 디폴트 설정:
+
+| 항목 | 시스템 hard cap (Super Admin) | 방별 디폴트 (Room Admin 조정 가능) |
+|---|---|---|
+| 방당 문서 수 | 500개 | 100개 |
+| 방당 총 용량 | 2 GB | 500 MB |
+| 방당 일일 메시지 토큰 | 5 M | 500 K |
+
+> Room Admin은 자기 방의 디폴트값을 시스템 hard cap까지 자유롭게 조정.
+> Super Admin은 시스템 hard cap을 언제든 수정.
+
+---
+
+## 4. 주요 유저 플로우
+
+### 4.1 어드민이 방 만들고 멤버 초대
+1. Google 로그인 → "방 만들기" → 이름/프롬프트/모델 입력
+2. 문서 업로드 → 해시 검사 → dedup 표시 또는 신규 인덱싱
+3. 멤버 탭 → 이메일 입력 → 초대 (이메일 알림)
+4. (선택) 비밀번호 설정 후 공유 링크 복사
+
+### 4.2 일반 유저가 비밀번호로 입장
+1. Google 로그인 → 공유받은 링크 클릭
+2. 비밀번호 입력 → 검증 통과 시 멤버 자동 등록
+3. "공용/내 채팅" 탭 선택 후 대화 시작
+
+### 4.3 일반 유저가 초대로 입장
+1. (비로그인 상태에서도 초대 가능) — 이메일로 초대 알림
+2. Google 로그인 시 자동으로 "내 방 목록"에 노출
+3. 클릭 → 즉시 입장
+
+### 4.4 어드민이 비용 확인 후 모델 변경
+1. 사용량 대시보드에서 방별 누적 비용 확인 (모델별 분해)
+2. Opus → Sonnet으로 변경 → 신규 메시지부터 반영
+
+---
+
+## 5. 비기능 요구사항
+
+| 항목 | 요구사항 |
+|---|---|
+| 응답 지연 | 첫 토큰 < 2초, 일반 대화 스트리밍 |
+| 동시 사용 | v1 동시 접속 50명 가정 |
+| 보안 | 비밀번호 해싱 (argon2), 방 ACL 서버사이드 강제, RAG 쿼리 헬퍼가 room_id 필터 누락 시 throw |
+| 데이터 격리 | SharedDocument 도입에도 불구하고 방 간 검색 누출 0건 — 단위 테스트로 강제 |
+| 비용 통제 | 유저별/방별 일일 토큰 한도, 한도 초과 시 차단 |
+| 로깅 | 모든 챗 메시지/검색 쿼리/관리 액션 감사 로그, 비용 텔레메트리 |
+| 캐시 | Claude prompt caching 적극 활용 (시스템 프롬프트 + 자주 쓰이는 문서 청크) → 비용 50%+ 절감 |
+
+---
+
+## 6. 기술 스택 (확정)
+
+| 영역 | 선택 | 비고 |
+|---|---|---|
+| **프레임워크** | Next.js 15 (App Router) | 풀스택 단일 코드베이스 |
+| **언어** | TypeScript | |
+| **UI** | Tailwind CSS + shadcn/ui | |
+| **챗 UI** | Vercel AI SDK (`useChat`) + 자체 공용 스레드 핸들러 | 1:1은 useChat 그대로, 공용은 Postgres pub/sub 또는 Supabase Realtime |
+| **인증** | Auth.js (NextAuth v5) + Google Provider | DB 어댑터 |
+| **DB** | PostgreSQL (Supabase) | pgvector 확장 |
+| **ORM** | Drizzle ORM | |
+| **벡터 스토어** | Postgres + pgvector | room_documents join으로 ACL 강제 |
+| **LLM (생성)** | Claude API — Sonnet 4.6 (기본) / Opus 4.7 / Haiku 4.5 | 방별 선택, prompt caching 사용 |
+| **임베딩 (확정)** | **Voyage AI `voyage-3-lite`** | $0.02/1M, 다국어 지원, 한국어 품질 양호. 부족 시 `voyage-3`로 업그레이드 |
+| **PDF 파싱** | `unpdf` (Node) | 서버사이드 텍스트 추출 |
+| **청킹** | 자체 구현 (500 토큰 / 50 오버랩, 문단 경계 우선) | |
+| **파일 저장** | Supabase Storage | SharedDocument는 해시 경로로 저장 |
+| **실시간 (공용 스레드)** | Supabase Realtime | 같은 방 멤버에 메시지 broadcast |
+| **이메일 (초대)** | Resend | |
+| **배포** | Vercel (앱) + Supabase (DB/Storage/Realtime) | |
+| **모니터링** | Vercel Analytics + Sentry | |
+
+### 모델 단가 참고 (2026-05 기준, USD per 1M tokens)
+
+| 모델 | Input | Output | Cache write | Cache read |
+|---|---|---|---|---|
+| claude-opus-4-7 | $15 | $75 | $18.75 | $1.50 |
+| claude-sonnet-4-6 | $3 | $15 | $3.75 | $0.30 |
+| claude-haiku-4-5 | $1 | $5 | $1.25 | $0.10 |
+| voyage-3-lite (embedding) | $0.02 | — | — | — |
+
+> 메시지당 예상 비용 (input 2K + output 500 토큰, 캐시 없음):
+> - Haiku: ~$0.0045
+> - Sonnet: ~$0.014
+> - Opus: ~$0.068
+> 캐시 적용 시 input 비용 -90%, 메시지당 비용 30~50% 절감.
+
+---
+
+## 7. 데이터 모델 (확정 초안)
+
+```
+User
+  id, email, name, image, role (super_admin | room_admin | member), created_at
+
+Room
+  id, name, description, owner_id (→User),
+  system_prompt, model, top_k, temperature,
+  password_hash (nullable),
+  quota_docs, quota_bytes, quota_daily_tokens,
+  created_at
+
+Membership
+  id, room_id, user_id, role (admin | member),
+  joined_at, joined_via (invite | password)
+
+SharedDocument                  -- 시스템 전역 dedup
+  id, content_hash (unique, sha256),
+  original_filename, mime_type, byte_size,
+  text_extract_version, chunking_version, embedding_model,
+  status (pending | indexed | failed),
+  created_at, indexed_at
+
+RoomDocument                    -- 방 ↔ SharedDocument 매핑
+  id, room_id, shared_doc_id,
+  display_filename,             -- 방별 이름 변경 허용
+  attached_by, attached_at
+
+Chunk                           -- SharedDocument 종속
+  id, shared_doc_id, content, embedding (vector),
+  page, chunk_index, metadata_json
+
+Thread
+  id, room_id,
+  visibility (private | shared),
+  user_id (nullable, shared면 NULL),
+  title, created_at, last_message_at
+
+Message
+  id, thread_id,
+  sender_id (→User, nullable — assistant면 NULL),
+  role (user | assistant),
+  content,
+  sources_json (인용 청크 ids + 점수),
+  model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens,
+  created_at
+
+Invite
+  id, room_id, email, invited_by, token,
+  expires_at, accepted_at
+
+UsageDaily                      -- 비용 집계 (매일 1행/방/모델)
+  id, room_id, date, model,
+  tokens_in_sum, tokens_out_sum, cache_read_sum, cache_write_sum,
+  message_count, estimated_cost_usd
+
+AuditLog
+  id, actor_id, action, target_type, target_id,
+  metadata_json, created_at
+```
+
+**핵심 인덱스**
+- `chunks.embedding` — HNSW or IVF
+- `room_documents (room_id, shared_doc_id)` — 유니크
+- `shared_documents.content_hash` — 유니크
+- `messages (thread_id, created_at)`
+
+**RAG 쿼리 (의사 SQL)**
+```sql
+SELECT c.id, c.content, c.page, c.embedding <=> $query_vec AS dist,
+       sd.original_filename
+FROM chunks c
+JOIN shared_documents sd ON sd.id = c.shared_doc_id
+JOIN room_documents rd ON rd.shared_doc_id = sd.id
+WHERE rd.room_id = $room_id    -- ★ 격리 보장
+ORDER BY dist
+LIMIT $top_k;
+```
+
+---
+
+## 8. v1 스코프 / 비스코프
+
+### v1 포함
+- Google 로그인
+- 방 생성/삭제, 비밀번호 + 초대 ACL
+- PDF 업로드 → SharedDocument dedup → pgvector 인덱싱
+- 듀얼 채팅 모드 (공용/1:1 탭)
+- 출처 표시 (문서명 + 페이지)
+- Room Admin / Super Admin 콘솔
+- 비용 추적 대시보드 (방별/모델별)
+- 쿼터 (시스템 cap + 방별 조정)
+
+### v1 제외 (백로그)
+- DOCX/TXT/MD 업로드 (PDF만 우선)
+- 음성/이미지 입력
+- 비Claude 모델 (OpenAI/Gemini)
+- Webhook / API 외부 통합
+- 모바일 앱 (반응형 웹만)
+- 방별 임베딩 모델 선택 (dedup 깨짐 — 시스템 단일 디폴트)
+- 다중 공용 스레드 (방당 1개)
+- Reranker
+- Self-host 가이드
+
+---
+
+## 9. 결정 사항 (1차 검토 반영)
+
+| # | 항목 | 결정 |
+|---|---|---|
+| 1 | 채팅 모드 | **공용/1:1 탭 병행** — 같은 문서 인덱스 공유 |
+| 2 | 인증 | **Google OAuth만** |
+| 3 | Super Admin 지정 | **ENV 화이트리스트** (`SUPER_ADMINS=...`) |
+| 4 | 쿼터 | **시스템 hard cap + 방별 조정 가능** — 디폴트: 방당 100문서/500MB/500K tokens/day |
+| 5 | 임베딩 모델 | **Voyage `voyage-3-lite`** ($0.02/1M, 한국어 OK) |
+| 6 | 생성 모델 선택 | **어드민이 방별 선택** (Sonnet/Opus/Haiku) + **방별 비용 가시화** |
+| 7 | 문서 dedup | **시스템 전역 SharedDocument 패턴** (해시 기반, ACL은 매핑 테이블로) |
+| 8 | 공용 스레드 모더레이션 | **Room Admin이 임의 메시지 삭제 가능** (soft delete + 감사 로그) |
+| 9 | 민감정보 처리 | **5계층 접근** — L1 PII 자동 스캔 (정규식) + L2 어드민 결정 UI + L5 운영 정책은 v1, L3 방 민감도 등급 + L4 응답 필터는 v1.5 |
+
+---
+
+## 10. 마일스톤
+
+| 주차 | 산출물 |
+|---|---|
+| W1 | Next.js 스캐폴딩, Google OAuth, User/Room 스키마, 방 CRUD UI |
+| W2 | PDF 업로드 + SHA256 dedup + 청킹 + voyage-3-lite 임베딩 + pgvector |
+| W3 | RAG 쿼리 파이프라인 + 채팅 UI (1:1 스트리밍) + 출처 표시 |
+| W4 | 공용 스레드 (Supabase Realtime), Membership ACL, 비밀번호/초대 플로우 |
+| W5 | Room Admin 콘솔 (멤버/문서/모델/쿼터/비용 대시보드) |
+| W6 | Super Admin 콘솔, 감사 로그, 한도 강제, 한국어 UI 다듬기 |
+| W7 | 첫 방(성수3 등 5종 PDF) 시드, QA, 배포 |
+
+---
+
+## 11. 남은 검토 포인트
+
+1. **임베딩 한국어 벤치**: voyage-3-lite vs voyage-3 — 첫 방 PDF로 실측 후 결정.
+2. **prompt caching 전략**: 시스템 프롬프트만 캐시 vs 자주 쓰이는 청크까지 캐시 — 트래픽 보고 결정.
+3. **invite 토큰 만료**: 7일/30일/무기한 — 디폴트 7일 + 어드민 조정 가능?
+4. **Anthropic zero-retention**: 활성화 조건 / 비용 / 신청 절차 확인 필요.
+5. **방 삭제 grace period**: 30일이 적정한지 — 법인 사용 사례에 따라 조정 가능.
+6. **PII 마스킹 false positive**: 정규식 오검출 (사업자번호 형식과 다른 숫자열 등) — 시드 PDF로 정확도 측정 후 패턴 튜닝.
