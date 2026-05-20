@@ -3,6 +3,7 @@ import Link from "next/link";
 import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
+import { slugify } from "@/lib/slug";
 
 const SENSITIVITIES = ["public", "internal", "confidential"] as const;
 
@@ -36,9 +37,10 @@ async function createRoom(formData: FormData) {
       system_prompt: systemPrompt,
       model,
       sensitivity,
+      slug: slugify(name),
       owner_id: user.id,
     })
-    .select("id")
+    .select("id, slug")
     .single();
 
   if (error || !room) {
@@ -70,7 +72,7 @@ async function createRoom(formData: FormData) {
     metadata: { name },
   });
 
-  redirect(`/rooms/${room.id}`);
+  redirect(`/rooms/${room.slug ?? room.id}`);
 }
 
 const inputClass =

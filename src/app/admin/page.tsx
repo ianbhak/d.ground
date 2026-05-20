@@ -35,7 +35,7 @@ export default async function SuperAdminPage() {
     admin
       .schema("dground")
       .from("rooms")
-      .select("id, name, owner_id, created_at")
+      .select("id, slug, name, owner_id, created_at")
       .is("deleted_at", null)
       .order("created_at", { ascending: false }),
     admin.schema("dground").from("memberships").select("room_id, user_id"),
@@ -150,7 +150,7 @@ export default async function SuperAdminPage() {
                   <tr key={r.id} className="border-b border-black/10">
                     <td className="py-2">
                       <Link
-                        href={`/rooms/${r.id}` as never}
+                        href={`/rooms/${r.slug ?? r.id}` as never}
                         className="hover:text-[var(--color-accent)]"
                       >
                         {r.name}

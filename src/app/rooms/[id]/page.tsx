@@ -6,6 +6,7 @@ import DocumentUpload from "@/components/DocumentUpload";
 import RoomChatTabs from "@/components/RoomChatTabs";
 import { type ChatMessage } from "@/components/RoomChat";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isUuid } from "@/lib/slug";
 import { detachDocument } from "./actions";
 
 function formatBytes(n: number): string {
@@ -36,7 +37,7 @@ export default async function RoomPage({
     .schema("dground")
     .from("rooms")
     .select("*")
-    .eq("id", id)
+    .eq(isUuid(id) ? "id" : "slug", id)
     .is("deleted_at", null)
     .single();
 
@@ -50,7 +51,7 @@ export default async function RoomPage({
     .select(
       "id, display_filename, attached_at, shared_documents(status, byte_size)",
     )
-    .eq("room_id", id)
+    .eq("room_id", room.id)
     .order("attached_at", { ascending: false });
 
   const docs = (docsRaw ?? []).map((d) => {
@@ -77,7 +78,7 @@ export default async function RoomPage({
       .schema("dground")
       .from("threads")
       .select("id, visibility, user_id")
-      .eq("room_id", id);
+      .eq("room_id", room.id);
 
     const privateThread = (threads ?? []).find(
       (t) => t.visibility === "private" && t.user_id === user.id,
@@ -140,7 +141,7 @@ export default async function RoomPage({
         <div className="flex items-center gap-4">
           {isOwner && (
             <Link
-              href={`/rooms/${room.id}/admin` as never}
+              href={`/rooms/${room.slug ?? room.id}/admin` as never}
               className="oma-label text-black/40 transition-colors hover:text-black"
             >
               관리

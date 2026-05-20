@@ -31,6 +31,7 @@ export default async function HomePage() {
 
   let rooms: Array<{
     id: string;
+    slug: string | null;
     name: string;
     description: string | null;
     model: string;
@@ -41,7 +42,7 @@ export default async function HomePage() {
     const { data, error } = await supabase
       .schema("dground")
       .from("rooms")
-      .select("id, name, description, model, created_at")
+      .select("id, slug, name, description, model, created_at")
       .is("deleted_at", null)
       .order("created_at", { ascending: false });
     if (error) roomsError = true;
@@ -164,7 +165,7 @@ export default async function HomePage() {
                 {rooms.map((r) => (
                   <Link
                     key={r.id}
-                    href={`/rooms/${r.id}` as never}
+                    href={`/rooms/${r.slug ?? r.id}` as never}
                     className="oma-card block p-5"
                   >
                     <h3 className="font-bold">{r.name}</h3>

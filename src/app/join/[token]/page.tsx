@@ -24,7 +24,13 @@ export default async function JoinPage({
     .rpc("join_room_by_token", { p_token: token });
 
   if (roomId) {
-    redirect(`/rooms/${roomId}`);
+    const { data: room } = await supabase
+      .schema("dground")
+      .from("rooms")
+      .select("slug")
+      .eq("id", roomId)
+      .maybeSingle();
+    redirect(`/rooms/${room?.slug ?? roomId}`);
   }
 
   return (

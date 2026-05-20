@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isUuid } from "@/lib/slug";
 import {
   estimateCostUsd,
   formatUsd,
@@ -38,7 +39,7 @@ export default async function AdminPage({
     .schema("dground")
     .from("rooms")
     .select("*")
-    .eq("id", id)
+    .eq(isUuid(id) ? "id" : "slug", id)
     .is("deleted_at", null)
     .single();
   if (!room) notFound();
@@ -51,14 +52,14 @@ export default async function AdminPage({
     .schema("dground")
     .from("memberships")
     .select("user_id, role, joined_at, joined_via")
-    .eq("room_id", id)
+    .eq("room_id", room.id)
     .order("joined_at", { ascending: true });
 
   const { data: threads } = await admin
     .schema("dground")
     .from("threads")
     .select("id")
-    .eq("room_id", id);
+    .eq("room_id", room.id);
   const threadIds = (threads ?? []).map((t) => t.id);
 
   let msgRows: {
@@ -226,7 +227,7 @@ export default async function AdminPage({
                   </div>
                   {!isOwner && (
                     <form action={removeMember}>
-                      <input type="hidden" name="room_id" value={id} />
+                      <input type="hidden" name="room_id" value={room.id} />
                       <input
                         type="hidden"
                         name="user_id"
@@ -252,7 +253,8 @@ export default async function AdminPage({
           <h2 className="mt-1 font-serif text-2xl">방 설정</h2>
 
           <form action={updateRoomSettings} className="mt-4 space-y-5">
-            <input type="hidden" name="room_id" value={id} />
+            <input type="hidden" name="room_id" value={room.id} />
+            <input type="hidden" name="slug" value={room.slug ?? room.id} />
 
             <div className="space-y-2">
               <label className="oma-label block text-black/60">방 이름</label>
