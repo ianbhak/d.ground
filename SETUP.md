@@ -50,12 +50,11 @@ Supabase Dashboard → **Authentication** → **URL Configuration**
 
 ## 3. Fill in `.env.local`
 
-Open `.env.local` and replace the three `<PASTE_...>` placeholders:
+Open `.env.local` and replace the two `<PASTE_...>` placeholders:
 
 ```bash
 NEXT_PUBLIC_SUPABASE_ANON_KEY="<PASTE_ANON_KEY>"
 SUPABASE_SERVICE_ROLE_KEY="<PASTE_SERVICE_ROLE_KEY>"
-DATABASE_URL="<PASTE_SESSION_POOLER_CONNECTION_STRING>"
 ```
 
 Where to find them:
@@ -64,7 +63,10 @@ Where to find them:
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | **Project Settings → API → Project API keys → `anon` `public`** |
 | `SUPABASE_SERVICE_ROLE_KEY` | Same page → `service_role` `secret`. **Server-only — never expose.** |
-| `DATABASE_URL` | **Project Settings → Database → Connection string → Session pooler** (5432). Replace `[YOUR-PASSWORD]` with the DB password set in the same page. |
+
+> Data access goes entirely through the Supabase client (PostgREST) +
+> Postgres RPC functions — there is no direct DB connection, so no
+> `DATABASE_URL` is needed.
 
 ## 4. Verify Google OAuth provider
 
@@ -79,8 +81,9 @@ callback URL `https://yvasxiixcnukyzxlnqvb.supabase.co/auth/v1/callback`.
 npm run dev
 ```
 
-Open http://localhost:3000 → click **Sign in with Google** → you should
-land on `/rooms` (empty state). Click **+ 새 방** to create your first Room.
+Open http://localhost:3000 → click **Sign in with Google** → the home
+page becomes your rooms dashboard. Click **+ 새 방** to create your
+first Room, then copy its invite link from the room page.
 
 ---
 
@@ -88,7 +91,6 @@ land on `/rooms` (empty state). Click **+ 새 방** to create your first Room.
 
 | Symptom | Likely cause |
 |---|---|
-| `Database URL is not set` on `npm run dev` | `.env.local` missing or `DATABASE_URL` empty |
 | OAuth redirects to localhost but errors with "redirect_uri_mismatch" | Supabase Auth → URL Configuration → Additional Redirect URLs missing `http://localhost:3000/**` |
 | `relation "dground.rooms" does not exist` | SQL migration in step 1 didn't run |
 | Room list shows 401 / no rows | RLS policy issue — check you're logged in, `auth.uid()` should match `owner_id` |

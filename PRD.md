@@ -278,8 +278,9 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 | **챗 UI** | Vercel AI SDK (`useChat`) + 자체 공용 스레드 핸들러 | 1:1은 useChat 그대로, 공용은 Postgres pub/sub 또는 Supabase Realtime |
 | **인증** | **Supabase Auth (`@supabase/ssr`)** + Google Provider | d.connect와 동일한 `auth.users` 공유 (§12 참조) |
 | **DB** | PostgreSQL (Supabase) — **d.connect 프로젝트 공유** | `dground` 스키마로 격리, pgvector 확장 |
-| **ORM** | Drizzle ORM | `dground` 스키마만 관리 |
-| **벡터 스토어** | Postgres + pgvector | room_documents join으로 ACL 강제 |
+| **데이터 접근** | Supabase JS 클라이언트 (PostgREST) + Postgres RPC 함수 | RLS 자동 적용. 별도 ORM·직접 연결(`DATABASE_URL`) 없음 |
+| **타입** | `supabase gen types`로 DB 스키마에서 자동 생성 | `npm run db:types` → `src/lib/database.types.ts` |
+| **벡터 검색** | Postgres 함수 `match_chunks()` + `supabase.rpc()` | room_documents join을 함수에 내장 → ACL·방 격리 강제 |
 | **LLM (생성)** | Claude API — Sonnet 4.6 (기본) / Opus 4.7 / Haiku 4.5 | 방별 선택, prompt caching 사용 |
 | **임베딩 (확정)** | **Voyage AI `voyage-3-lite`** | $0.02/1M, 다국어 지원, 한국어 품질 양호. 부족 시 `voyage-3`로 업그레이드 |
 | **PDF 파싱** | `unpdf` (Node) | 서버사이드 텍스트 추출 |
@@ -453,8 +454,7 @@ LIMIT $top_k;
 4. **Anthropic zero-retention**: 활성화 조건 / 비용 / 신청 절차 확인 필요.
 5. **방 삭제 grace period**: 30일이 적정한지 — 법인 사용 사례에 따라 조정 가능.
 6. **PII 마스킹 false positive**: 정규식 오검출 (사업자번호 형식과 다른 숫자열 등) — 시드 PDF로 정확도 측정 후 패턴 튜닝.
-7. **d.connect Drizzle 마이그레이션 충돌 방지**: d.connect는 raw SQL 마이그레이션, d.ground는 Drizzle — 같은 DB 내 공존 시 Drizzle은 `dground` 스키마만 관리하도록 `drizzle.config.ts`에 `schemaFilter` 설정 필요. CI에서 두 시스템 충돌 테스트.
-8. **공통 `profiles` 테이블 소유권**: d.connect가 현재 마스터 — d.ground/d.translate가 컬럼 추가 필요할 때 라인업 공통 마이그레이션 절차 정해야 함.
+7. **공통 `profiles` 테이블 소유권**: d.connect가 현재 마스터 — d.ground/d.translate가 컬럼 추가 필요할 때 라인업 공통 마이그레이션 절차 정해야 함.
 
 ---
 
@@ -499,5 +499,5 @@ LIMIT 20;
 ### 리스크 / 완화
 
 - **Blast radius**: 한 DB가 라인업 SPOF → W7 Pro 업그레이드로 PITR 확보, CI 마이그레이션 dry-run
-- **마이그레이션 도구 충돌**: d.connect raw SQL ↔ d.ground Drizzle → Drizzle `schemaFilter: ['dground']`로 범위 제한
+- **마이그레이션 일관성**: 라인업 전체가 손으로 쓴 raw SQL 마이그레이션 사용 — ORM별 도구 충돌 없음. d.ground는 `dground` 스키마만 건드림
 - **RLS 누락**: 새 `dground.*` 테이블은 모두 RLS enabled로 시작, 기본 정책은 deny-all + 명시적 allow
