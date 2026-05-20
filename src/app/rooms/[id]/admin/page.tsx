@@ -44,7 +44,9 @@ export default async function AdminPage({
     .is("deleted_at", null)
     .single();
   if (!room) notFound();
-  if (room.owner_id !== user.id) redirect(`/rooms/${id}`);
+  if (room.owner_id !== user.id) {
+    redirect(`/rooms/${encodeURIComponent(id)}`);
+  }
 
   // Admin-only data — service role (RLS bypassed after the owner check).
   const admin = createSupabaseAdminClient();

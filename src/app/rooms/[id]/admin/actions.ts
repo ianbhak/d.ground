@@ -103,7 +103,7 @@ export async function updateRoomSettings(formData: FormData) {
   const slug = String(formData.get("slug") ?? roomId);
   revalidatePath(`/rooms/${slug}/admin`);
   revalidatePath(`/rooms/${slug}`);
-  redirect(`/rooms/${slug}/admin?saved=1`);
+  redirect(`/rooms/${encodeURIComponent(slug)}/admin?saved=1`);
 }
 
 export async function removeMember(formData: FormData) {

@@ -72,7 +72,7 @@ async function createRoom(formData: FormData) {
     metadata: { name },
   });
 
-  redirect(`/rooms/${room.slug ?? room.id}`);
+  redirect(`/rooms/${encodeURIComponent(room.slug ?? room.id)}`);
 }
 
 const inputClass =

@@ -30,7 +30,7 @@ export default async function JoinPage({
       .select("slug")
       .eq("id", roomId)
       .maybeSingle();
-    redirect(`/rooms/${room?.slug ?? roomId}`);
+    redirect(`/rooms/${encodeURIComponent(room?.slug ?? roomId)}`);
   }
 
   return (
