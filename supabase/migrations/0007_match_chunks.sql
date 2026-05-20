@@ -6,6 +6,10 @@
 -- only ever sees rooms they belong to. The p_room_id filter narrows
 -- to the one room being queried.
 --
+-- Note: search_path is pinned to '' for safety, so the pgvector
+-- distance operator must be written fully-qualified as
+-- OPERATOR(extensions.<=>) — pgvector lives in the `extensions` schema.
+--
 -- Run in Supabase SQL Editor after 0001–0006.
 
 CREATE OR REPLACE FUNCTION dground.match_chunks(
@@ -30,13 +34,13 @@ AS $$
     c.content,
     c.page,
     COALESCE(rd.display_filename, sd.original_filename),
-    (1 - (c.embedding <=> query_embedding))::real
+    (1 - (c.embedding OPERATOR(extensions.<=>) query_embedding))::real
   FROM dground.chunks c
   JOIN dground.room_documents rd ON rd.shared_doc_id = c.shared_doc_id
   JOIN dground.shared_documents sd ON sd.id = c.shared_doc_id
   WHERE rd.room_id = p_room_id
     AND c.embedding IS NOT NULL
-  ORDER BY c.embedding <=> query_embedding
+  ORDER BY c.embedding OPERATOR(extensions.<=>) query_embedding
   LIMIT match_count;
 $$;
 
