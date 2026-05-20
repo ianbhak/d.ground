@@ -46,6 +46,9 @@ export default async function RoomPage({
           <span className="oma-label border border-black/15 px-2.5 py-1 text-black/50">
             {room.sensitivity}
           </span>
+          <span className="oma-label border border-black/15 px-2.5 py-1 text-black/50">
+            {room.password_hash ? "비밀번호 입장" : "초대 전용"}
+          </span>
         </div>
 
         <div className="mt-10 grid gap-px border border-black bg-black sm:grid-cols-3">
