@@ -112,7 +112,14 @@ export async function POST(
     tokensIn = result.tokensIn;
     tokensOut = result.tokensOut;
   } catch (e) {
-    return json({ error: `생성 실패: ${(e as Error).message}` }, 500);
+    const msg = (e as Error).message;
+    if (/\b(503|429)\b|UNAVAILABLE|overload|high demand/i.test(msg)) {
+      return json(
+        { error: "AI 모델이 일시적으로 혼잡합니다. 잠시 후 다시 시도해 주세요." },
+        503,
+      );
+    }
+    return json({ error: `생성 실패: ${msg}` }, 500);
   }
 
   const sources = chunks.map((c) => ({

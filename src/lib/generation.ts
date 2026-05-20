@@ -4,6 +4,8 @@
  * Used for RAG answers. Reuses the d.connect family's Gemini key.
  */
 
+import { fetchWithRetry } from "./fetch-retry";
+
 const ALLOWED_MODELS = new Set([
   "gemini-2.5-flash",
   "gemini-2.5-pro",
@@ -37,7 +39,7 @@ export async function generateAnswer(params: {
     ? params.model
     : FALLBACK_MODEL;
 
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",

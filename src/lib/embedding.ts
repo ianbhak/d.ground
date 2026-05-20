@@ -8,6 +8,8 @@
  * Reuses the d.connect family's existing Gemini API key — no new vendor.
  */
 
+import { fetchWithRetry } from "./fetch-retry";
+
 const ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents";
 const MODEL = "models/gemini-embedding-001";
@@ -46,7 +48,7 @@ export async function embedTexts(
 
   for (let i = 0; i < texts.length; i += BATCH) {
     const batch = texts.slice(i, i + BATCH);
-    const res = await fetch(ENDPOINT, {
+    const res = await fetchWithRetry(ENDPOINT, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
