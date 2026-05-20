@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Brandmark from "@/components/Brandmark";
 import InviteLinkCard from "@/components/InviteLinkCard";
 import DocumentUpload from "@/components/DocumentUpload";
+import RoomChat, { type ChatMessage } from "@/components/RoomChat";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function formatBytes(n: number): string {
@@ -61,6 +62,39 @@ export default async function RoomPage({
       bytes: (sd?.byte_size as number) ?? 0,
     };
   });
+
+  const hasIndexedDocs = docs.some((d) => d.status === "indexed");
+
+  // Load this user's private chat thread for the room.
+  let chatMessages: ChatMessage[] = [];
+  if (user) {
+    const { data: thread } = await supabase
+      .schema("dground")
+      .from("threads")
+      .select("id")
+      .eq("room_id", id)
+      .eq("visibility", "private")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (thread) {
+      const { data: msgs } = await supabase
+        .schema("dground")
+        .from("messages")
+        .select("role, content, sources")
+        .eq("thread_id", thread.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+
+      chatMessages = (msgs ?? []).map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content as string,
+        sources: Array.isArray(m.sources)
+          ? (m.sources as { filename: string; page: number | null }[])
+          : [],
+      }));
+    }
+  }
 
   return (
     <div className="min-h-screen">
@@ -147,12 +181,20 @@ export default async function RoomPage({
           )}
         </section>
 
-        <div className="mt-6 border border-dashed border-black/30 p-10 text-center">
-          <p className="oma-label text-black/40">Coming in W3</p>
-          <p className="mt-2 text-sm text-black/55">
-            문서가 색인되면 RAG 채팅이 여기에 추가됩니다.
-          </p>
-        </div>
+        {/* ── Chat ───────────────────────────────────────────── */}
+        <section className="mt-10">
+          <div className="border-b border-black/10 pb-3">
+            <p className="oma-label text-black/40">Chat</p>
+            <h2 className="mt-1 font-serif text-2xl">내 채팅</h2>
+          </div>
+          <div className="mt-4">
+            <RoomChat
+              roomId={room.id}
+              initialMessages={chatMessages}
+              hasDocuments={hasIndexedDocs}
+            />
+          </div>
+        </section>
       </main>
     </div>
   );
