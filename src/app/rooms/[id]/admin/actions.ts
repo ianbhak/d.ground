@@ -141,3 +141,26 @@ export async function removeMember(formData: FormData) {
 
   revalidatePath(`/rooms/${roomId}/admin`);
 }
+
+/** Soft-delete a room (owner). 30-day grace before the cron purge. */
+export async function softDeleteRoom(formData: FormData) {
+  const roomId = String(formData.get("room_id") ?? "");
+  const actorId = await assertOwner(roomId);
+
+  const admin = createSupabaseAdminClient();
+  await admin
+    .schema("dground")
+    .from("rooms")
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("id", roomId);
+
+  await logAudit({
+    actorId,
+    action: "room.delete",
+    targetType: "room",
+    targetId: roomId,
+    metadata: { by: "owner" },
+  });
+
+  redirect("/");
+}

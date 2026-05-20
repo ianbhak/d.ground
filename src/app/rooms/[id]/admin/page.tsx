@@ -10,7 +10,8 @@ import {
   formatKrw,
   MODEL_RATES,
 } from "@/lib/pricing";
-import { updateRoomSettings, removeMember } from "./actions";
+import ConfirmSubmit from "@/components/ConfirmSubmit";
+import { updateRoomSettings, removeMember, softDeleteRoom } from "./actions";
 
 const inputClass =
   "w-full border border-black bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent)]";
@@ -403,6 +404,25 @@ export default async function AdminPage({
             >
               설정 저장
             </button>
+          </form>
+        </section>
+
+        {/* ── 위험 구역 ──────────────────────────────────────── */}
+        <section className="mt-10 border border-[var(--color-accent)] p-5">
+          <p className="oma-label text-[var(--color-accent)]">Danger zone</p>
+          <h2 className="mt-1 font-serif text-2xl">방 삭제</h2>
+          <p className="mt-2 text-sm text-black/55">
+            방을 삭제하면 목록에서 사라지고 <strong>30일 뒤 문서·대화·임베딩이
+            영구 삭제</strong>됩니다. 30일 안에는 홈에서 복구할 수 있습니다.
+          </p>
+          <form action={softDeleteRoom} className="mt-4">
+            <input type="hidden" name="room_id" value={room.id} />
+            <ConfirmSubmit
+              message="이 방을 삭제할까요? 30일 안에는 복구할 수 있습니다."
+              className="border border-[var(--color-accent)] px-4 py-2.5 text-sm font-bold text-[var(--color-accent)] transition-colors hover:bg-[var(--color-accent)] hover:text-white"
+            >
+              방 삭제
+            </ConfirmSubmit>
           </form>
         </section>
       </main>
