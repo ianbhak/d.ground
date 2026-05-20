@@ -25,11 +25,16 @@ Expect 10 tables: `audit_log, chunks, invites, memberships, messages, room_docum
 
 ⚠️ **Critical** — without this the app fails with `PGRST106: Invalid schema: dground`.
 
-Supabase Dashboard → **Project Settings** → **API** → **Exposed schemas**
-→ add **`dground`** to the list (next to `public`, `graphql_public`) → **Save**.
+Run [`supabase/migrations/0003_expose_dground_schema.sql`](supabase/migrations/0003_expose_dground_schema.sql)
+in the SQL Editor (along with 0001 and 0002).
 
-PostgREST (the REST layer the JS client uses) only serves schemas on this
-list. Creating the schema in SQL is not enough — it must be exposed here.
+It sets the `authenticator` role's `pgrst.db_schemas` config and reloads
+PostgREST — the same thing the dashboard's *Settings → API → Exposed
+schemas* control does, but without dashboard navigation.
+
+> Dashboard alternative (if you prefer the UI): Project Settings → API →
+> *Exposed schemas* → add `dground`. The menu label/location changes
+> between Supabase releases, so the SQL migration above is more reliable.
 
 ## 2. Add d.ground redirect URLs to Supabase
 
