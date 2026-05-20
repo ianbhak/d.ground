@@ -15,5 +15,8 @@
 ALTER ROLE authenticator
   SET pgrst.db_schemas = 'public, graphql_public, dground';
 
--- Ask PostgREST to reload its configuration immediately.
+-- Reload config (picks up the new db_schemas) AND the schema cache
+-- (so PostgREST discovers the dground tables). Both are needed —
+-- reloading config alone leaves the table cache stale → PGRST205.
 NOTIFY pgrst, 'reload config';
+NOTIFY pgrst, 'reload schema';

@@ -7,11 +7,10 @@
 --   grants, `authenticated` users get "permission denied" even though
 --   RLS policies exist.
 --
--- This is separate from exposing the schema to the Data API, which is a
--- project setting: Dashboard → Project Settings → API → Exposed schemas
--- → add `dground`. SQL cannot change that setting.
+-- This is separate from exposing the schema to the Data API — that is
+-- handled by migration 0003_expose_dground_schema.sql.
 --
--- Run this in Supabase SQL Editor after 0001_dground_init.sql.
+-- Run this in Supabase SQL Editor after 0001, before/with 0003.
 
 BEGIN;
 
