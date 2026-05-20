@@ -3,7 +3,7 @@ import Link from "next/link";
 import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
-import { slugify } from "@/lib/slug";
+import { generateRoomSlug } from "@/lib/room-slug";
 
 const SENSITIVITIES = ["public", "internal", "confidential"] as const;
 
@@ -37,7 +37,7 @@ async function createRoom(formData: FormData) {
       system_prompt: systemPrompt,
       model,
       sensitivity,
-      slug: slugify(name),
+      slug: await generateRoomSlug(name),
       owner_id: user.id,
     })
     .select("id, slug")
