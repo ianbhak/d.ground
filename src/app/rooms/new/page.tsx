@@ -53,6 +53,14 @@ async function createRoom(formData: FormData) {
     joined_via: "owner",
   });
 
+  // Every room has one shared thread that all members chat in.
+  await supabase.schema("dground").from("threads").insert({
+    room_id: room.id,
+    visibility: "shared",
+    user_id: null,
+    title: "공용 스레드",
+  });
+
   redirect(`/rooms/${room.id}`);
 }
 

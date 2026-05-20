@@ -37,9 +37,11 @@ export async function POST(
 
   const body = (await req.json().catch(() => null)) as {
     message?: string;
+    mode?: "private" | "shared";
   } | null;
   const message = body?.message?.trim();
   if (!message) return json({ error: "메시지가 비어 있습니다." }, 400);
+  const mode = body?.mode === "shared" ? "shared" : "private";
 
   const { data: room } = await supabase
     .schema("dground")
@@ -50,30 +52,46 @@ export async function POST(
     .single();
   if (!room) return json({ error: "room not found or no access" }, 404);
 
-  // ── Get-or-create the user's private thread ──────────────────────
+  // ── Resolve the thread ───────────────────────────────────────────
+  // shared: the room's single shared thread (always exists).
+  // private: the caller's private thread, created on first use.
   let threadId: string;
-  const { data: existing } = await supabase
-    .schema("dground")
-    .from("threads")
-    .select("id")
-    .eq("room_id", roomId)
-    .eq("visibility", "private")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (existing) {
-    threadId = existing.id;
-  } else {
-    const { data: created, error: tErr } = await supabase
+  if (mode === "shared") {
+    const { data: shared } = await supabase
       .schema("dground")
       .from("threads")
-      .insert({ room_id: roomId, visibility: "private", user_id: user.id })
       .select("id")
-      .single();
-    if (tErr || !created) {
-      return json({ error: tErr?.message ?? "thread create failed" }, 500);
+      .eq("room_id", roomId)
+      .eq("visibility", "shared")
+      .maybeSingle();
+    if (!shared) {
+      return json({ error: "공용 스레드를 찾을 수 없습니다." }, 500);
     }
-    threadId = created.id;
+    threadId = shared.id;
+  } else {
+    const { data: existing } = await supabase
+      .schema("dground")
+      .from("threads")
+      .select("id")
+      .eq("room_id", roomId)
+      .eq("visibility", "private")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existing) {
+      threadId = existing.id;
+    } else {
+      const { data: created, error: tErr } = await supabase
+        .schema("dground")
+        .from("threads")
+        .insert({ room_id: roomId, visibility: "private", user_id: user.id })
+        .select("id")
+        .single();
+      if (tErr || !created) {
+        return json({ error: tErr?.message ?? "thread create failed" }, 500);
+      }
+      threadId = created.id;
+    }
   }
 
   await supabase.schema("dground").from("messages").insert({

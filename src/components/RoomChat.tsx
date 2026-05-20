@@ -11,7 +11,10 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
+  mine?: boolean; // shared thread: was this sent by the current user
 }
+
+export type ChatMode = "private" | "shared";
 
 function dedupeSources(sources?: Source[]): string[] {
   if (!sources) return [];
@@ -24,10 +27,12 @@ function dedupeSources(sources?: Source[]): string[] {
 
 export default function RoomChat({
   roomId,
+  mode,
   initialMessages,
   hasDocuments,
 }: {
   roomId: string;
+  mode: ChatMode;
   initialMessages: ChatMessage[];
   hasDocuments: boolean;
 }) {
@@ -55,14 +60,14 @@ export default function RoomChat({
     if (!q || sending) return;
     setInput("");
     setError(null);
-    setMessages((m) => [...m, { role: "user", content: q }]);
+    setMessages((m) => [...m, { role: "user", content: q, mine: true }]);
     setSending(true);
 
     try {
       const res = await fetch(`/api/rooms/${roomId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: q }),
+        body: JSON.stringify({ message: q, mode }),
       });
 
       if (!res.ok || !res.body) {
@@ -71,8 +76,10 @@ export default function RoomChat({
         return;
       }
 
-      // Empty assistant message that the stream fills in.
-      setMessages((m) => [...m, { role: "assistant", content: "", sources: [] }]);
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: "", sources: [], mine: false },
+      ]);
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -108,7 +115,6 @@ export default function RoomChat({
             }));
           } else if (evt.type === "error") {
             setError(evt.error ?? "생성 중 오류가 발생했습니다.");
-            // Drop the trailing empty assistant bubble.
             setMessages((m) =>
               m.length &&
               m[m.length - 1].role === "assistant" &&
@@ -132,27 +138,31 @@ export default function RoomChat({
         {messages.length === 0 && (
           <p className="py-10 text-center text-sm text-black/40">
             {hasDocuments
-              ? "문서에 대해 무엇이든 물어보세요."
+              ? mode === "shared"
+                ? "방 멤버 모두가 함께 보는 공용 채팅입니다."
+                : "문서에 대해 무엇이든 물어보세요."
               : "먼저 PDF를 업로드하면 문서 기반으로 답변할 수 있습니다."}
           </p>
         )}
 
         {messages.map((m, i) => {
-          const isUser = m.role === "user";
-          const isStreaming = !isUser && m.content === "";
+          const isRight = m.mine ?? m.role === "user";
+          const isStreaming = m.role === "assistant" && m.content === "";
+          const label =
+            m.role === "assistant" ? "d.ground" : isRight ? "나" : "멤버";
           return (
             <div
               key={i}
               className={`flex flex-col ${
-                isUser ? "items-end" : "items-start"
+                isRight ? "items-end" : "items-start"
               }`}
             >
-              <p className="oma-label mb-1 text-black/35">
-                {isUser ? "나" : "d.ground"}
-              </p>
+              <p className="oma-label mb-1 text-black/35">{label}</p>
               <div
                 className={`max-w-[85%] border border-black bg-white px-3.5 py-2.5 text-sm leading-relaxed ${
-                  isUser ? "" : "border-l-2 border-l-[var(--color-accent)]"
+                  m.role === "assistant"
+                    ? "border-l-2 border-l-[var(--color-accent)]"
+                    : ""
                 }`}
               >
                 {isStreaming ? (
@@ -162,11 +172,12 @@ export default function RoomChat({
                 ) : (
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 )}
-                {!isUser && dedupeSources(m.sources).length > 0 && (
-                  <p className="mt-2 font-mono text-xs text-black/40">
-                    출처: {dedupeSources(m.sources).join(" · ")}
-                  </p>
-                )}
+                {m.role === "assistant" &&
+                  dedupeSources(m.sources).length > 0 && (
+                    <p className="mt-2 font-mono text-xs text-black/40">
+                      출처: {dedupeSources(m.sources).join(" · ")}
+                    </p>
+                  )}
               </div>
             </div>
           );

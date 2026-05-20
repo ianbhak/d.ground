@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import Brandmark from "@/components/Brandmark";
 import InviteLinkCard from "@/components/InviteLinkCard";
 import DocumentUpload from "@/components/DocumentUpload";
-import RoomChat, { type ChatMessage } from "@/components/RoomChat";
+import RoomChatTabs from "@/components/RoomChatTabs";
+import { type ChatMessage } from "@/components/RoomChat";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 function formatBytes(n: number): string {
@@ -65,34 +66,57 @@ export default async function RoomPage({
 
   const hasIndexedDocs = docs.some((d) => d.status === "indexed");
 
-  // Load this user's private chat thread for the room.
-  let chatMessages: ChatMessage[] = [];
+  // Load chat history for both threads (private 1:1 + room-wide shared).
+  let privateMessages: ChatMessage[] = [];
+  let sharedMessages: ChatMessage[] = [];
+
   if (user) {
-    const { data: thread } = await supabase
+    const { data: threads } = await supabase
       .schema("dground")
       .from("threads")
-      .select("id")
-      .eq("room_id", id)
-      .eq("visibility", "private")
-      .eq("user_id", user.id)
-      .maybeSingle();
+      .select("id, visibility, user_id")
+      .eq("room_id", id);
 
-    if (thread) {
-      const { data: msgs } = await supabase
-        .schema("dground")
-        .from("messages")
-        .select("role, content, sources")
-        .eq("thread_id", thread.id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: true });
+    const privateThread = (threads ?? []).find(
+      (t) => t.visibility === "private" && t.user_id === user.id,
+    );
+    const sharedThread = (threads ?? []).find(
+      (t) => t.visibility === "shared",
+    );
 
-      chatMessages = (msgs ?? []).map((m) => ({
+    const asMessages = (
+      rows: { role: string; content: string; sources: unknown; sender_id: string | null }[],
+    ): ChatMessage[] =>
+      rows.map((m) => ({
         role: m.role as "user" | "assistant",
-        content: m.content as string,
+        content: m.content,
         sources: Array.isArray(m.sources)
           ? (m.sources as { filename: string; page: number | null }[])
           : [],
+        mine:
+          m.role === "assistant" ? false : m.sender_id === user.id,
       }));
+
+    if (privateThread) {
+      const { data: msgs } = await supabase
+        .schema("dground")
+        .from("messages")
+        .select("role, content, sources, sender_id")
+        .eq("thread_id", privateThread.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+      privateMessages = asMessages(msgs ?? []);
+    }
+
+    if (sharedThread) {
+      const { data: msgs } = await supabase
+        .schema("dground")
+        .from("messages")
+        .select("role, content, sources, sender_id")
+        .eq("thread_id", sharedThread.id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true });
+      sharedMessages = asMessages(msgs ?? []);
     }
   }
 
@@ -188,10 +212,11 @@ export default async function RoomPage({
             <h2 className="mt-1 font-serif text-2xl">내 채팅</h2>
           </div>
           <div className="mt-4">
-            <RoomChat
+            <RoomChatTabs
               roomId={room.id}
-              initialMessages={chatMessages}
               hasDocuments={hasIndexedDocs}
+              privateMessages={privateMessages}
+              sharedMessages={sharedMessages}
             />
           </div>
         </section>
