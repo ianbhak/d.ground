@@ -39,7 +39,16 @@ export default function RoomChat({
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, sending]);
+  }, [messages]);
+
+  function updateLast(fn: (msg: ChatMessage) => ChatMessage) {
+    setMessages((m) => {
+      if (m.length === 0) return m;
+      const copy = [...m];
+      copy[copy.length - 1] = fn(copy[copy.length - 1]);
+      return copy;
+    });
+  }
 
   async function send() {
     const q = input.trim();
@@ -48,21 +57,68 @@ export default function RoomChat({
     setError(null);
     setMessages((m) => [...m, { role: "user", content: q }]);
     setSending(true);
+
     try {
       const res = await fetch(`/api/rooms/${roomId}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: q }),
       });
-      const data = await res.json();
-      if (!res.ok) {
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error ?? "오류가 발생했습니다.");
         return;
       }
-      setMessages((m) => [
-        ...m,
-        { role: "assistant", content: data.answer, sources: data.sources },
-      ]);
+
+      // Empty assistant message that the stream fills in.
+      setMessages((m) => [...m, { role: "assistant", content: "", sources: [] }]);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let evt: {
+            type: string;
+            text?: string;
+            sources?: Source[];
+            error?: string;
+          };
+          try {
+            evt = JSON.parse(line);
+          } catch {
+            continue;
+          }
+
+          if (evt.type === "sources") {
+            updateLast((msg) => ({ ...msg, sources: evt.sources ?? [] }));
+          } else if (evt.type === "delta") {
+            updateLast((msg) => ({
+              ...msg,
+              content: msg.content + (evt.text ?? ""),
+            }));
+          } else if (evt.type === "error") {
+            setError(evt.error ?? "생성 중 오류가 발생했습니다.");
+            // Drop the trailing empty assistant bubble.
+            setMessages((m) =>
+              m.length &&
+              m[m.length - 1].role === "assistant" &&
+              !m[m.length - 1].content
+                ? m.slice(0, -1)
+                : m,
+            );
+          }
+        }
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -72,7 +128,6 @@ export default function RoomChat({
 
   return (
     <div className="border border-black bg-white">
-      {/* Messages */}
       <div className="max-h-[460px] min-h-[220px] space-y-5 overflow-y-auto p-5">
         {messages.length === 0 && (
           <p className="py-10 text-center text-sm text-black/40">
@@ -84,6 +139,7 @@ export default function RoomChat({
 
         {messages.map((m, i) => {
           const isUser = m.role === "user";
+          const isStreaming = !isUser && m.content === "";
           return (
             <div
               key={i}
@@ -99,7 +155,13 @@ export default function RoomChat({
                   isUser ? "" : "border-l-2 border-l-[var(--color-accent)]"
                 }`}
               >
-                <p className="whitespace-pre-wrap">{m.content}</p>
+                {isStreaming ? (
+                  <p className="text-black/40">
+                    문서를 검색하고 답변을 생성하는 중…
+                  </p>
+                ) : (
+                  <p className="whitespace-pre-wrap">{m.content}</p>
+                )}
                 {!isUser && dedupeSources(m.sources).length > 0 && (
                   <p className="mt-2 font-mono text-xs text-black/40">
                     출처: {dedupeSources(m.sources).join(" · ")}
@@ -110,15 +172,6 @@ export default function RoomChat({
           );
         })}
 
-        {sending && (
-          <div className="flex flex-col items-start">
-            <p className="oma-label mb-1 text-black/35">d.ground</p>
-            <div className="max-w-[85%] border border-l-2 border-black border-l-[var(--color-accent)] bg-white px-3.5 py-2.5 text-sm text-black/40">
-              문서를 검색하고 답변을 생성하는 중…
-            </div>
-          </div>
-        )}
-
         {error && (
           <p className="font-mono text-xs text-[var(--color-accent)]">
             ✗ {error}
@@ -127,7 +180,6 @@ export default function RoomChat({
         <div ref={endRef} />
       </div>
 
-      {/* Input */}
       <div className="flex items-stretch border-t border-black">
         <textarea
           value={input}

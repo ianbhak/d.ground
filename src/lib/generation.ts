@@ -1,5 +1,5 @@
 /**
- * Gemini text generation — server-only.
+ * Gemini text generation — server-only. Streaming + non-streaming.
  *
  * Used for RAG answers. Reuses the d.connect family's Gemini key.
  */
@@ -19,17 +19,27 @@ export interface GenerationResult {
   tokensOut: number;
 }
 
-interface GeminiGenerateResponse {
-  candidates?: { content?: { parts?: { text?: string }[] } }[];
-  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
-}
-
-export async function generateAnswer(params: {
+export interface GenerationParams {
   model: string;
   systemPrompt: string;
   userPrompt: string;
   temperature?: number;
-}): Promise<GenerationResult> {
+}
+
+type StreamEvent = { delta: string } | { tokensIn: number; tokensOut: number };
+
+interface GeminiStreamChunk {
+  candidates?: { content?: { parts?: { text?: string }[] } }[];
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+}
+
+/**
+ * Stream a Gemini answer. Yields `{ delta }` text events as they
+ * arrive, then a final `{ tokensIn, tokensOut }` usage event.
+ */
+export async function* streamAnswer(
+  params: GenerationParams,
+): AsyncGenerator<StreamEvent> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY is not set — add it to .env.local.");
@@ -40,7 +50,7 @@ export async function generateAnswer(params: {
     : FALLBACK_MODEL;
 
   const res = await fetchWithRetry(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`,
     {
       method: "POST",
       headers: {
@@ -55,21 +65,71 @@ export async function generateAnswer(params: {
     },
   );
 
-  if (!res.ok) {
+  if (!res.ok || !res.body) {
     throw new Error(
       `Gemini generation error ${res.status}: ${await res.text()}`,
     );
   }
 
-  const json = (await res.json()) as GeminiGenerateResponse;
-  const text =
-    json.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? "")
-      .join("") ?? "";
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let tokensIn = 0;
+  let tokensOut = 0;
 
-  return {
-    text,
-    tokensIn: json.usageMetadata?.promptTokenCount ?? 0,
-    tokensOut: json.usageMetadata?.candidatesTokenCount ?? 0,
-  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === "[DONE]") continue;
+
+      let chunk: GeminiStreamChunk;
+      try {
+        chunk = JSON.parse(payload);
+      } catch {
+        continue;
+      }
+
+      const text =
+        chunk.candidates?.[0]?.content?.parts
+          ?.map((p) => p.text ?? "")
+          .join("") ?? "";
+      if (text) yield { delta: text };
+
+      if (chunk.usageMetadata) {
+        tokensIn = chunk.usageMetadata.promptTokenCount ?? tokensIn;
+        tokensOut = chunk.usageMetadata.candidatesTokenCount ?? tokensOut;
+      }
+    }
+  }
+
+  yield { tokensIn, tokensOut };
+}
+
+/** Non-streaming convenience wrapper — collects the full stream. */
+export async function generateAnswer(
+  params: GenerationParams,
+): Promise<GenerationResult> {
+  let text = "";
+  let tokensIn = 0;
+  let tokensOut = 0;
+
+  for await (const event of streamAnswer(params)) {
+    if ("delta" in event) {
+      text += event.delta;
+    } else {
+      tokensIn = event.tokensIn;
+      tokensOut = event.tokensOut;
+    }
+  }
+
+  return { text, tokensIn, tokensOut };
 }

@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { embedQuery } from "@/lib/embedding";
-import { generateAnswer } from "@/lib/generation";
+import { streamAnswer } from "@/lib/generation";
 import {
   buildSystemPrompt,
   buildUserPrompt,
@@ -16,8 +16,12 @@ const TOP_K = 6;
 /**
  * RAG chat — answers a question grounded in the room's documents.
  *
- * embed question → match_chunks (vector search, room-isolated) →
- * Gemini answer → persist user + assistant messages with sources.
+ * Retrieval (embed → match_chunks) runs first and non-streamed; the
+ * answer is then streamed back as newline-delimited JSON events:
+ *   {"type":"sources","sources":[...]}
+ *   {"type":"delta","text":"..."}   (repeated)
+ *   {"type":"done"}  |  {"type":"error","error":"..."}
+ * The assistant message is persisted once the stream completes.
  */
 export async function POST(
   req: Request,
@@ -37,7 +41,6 @@ export async function POST(
   const message = body?.message?.trim();
   if (!message) return json({ error: "메시지가 비어 있습니다." }, 400);
 
-  // Room — RLS already restricts to rooms the user belongs to.
   const { data: room } = await supabase
     .schema("dground")
     .from("rooms")
@@ -47,7 +50,7 @@ export async function POST(
     .single();
   if (!room) return json({ error: "room not found or no access" }, 404);
 
-  // ── Get-or-create the user's private thread for this room ────────
+  // ── Get-or-create the user's private thread ──────────────────────
   let threadId: string;
   const { data: existing } = await supabase
     .schema("dground")
@@ -73,7 +76,6 @@ export async function POST(
     threadId = created.id;
   }
 
-  // ── Persist the user message ─────────────────────────────────────
   await supabase.schema("dground").from("messages").insert({
     thread_id: threadId,
     sender_id: user.id,
@@ -81,7 +83,7 @@ export async function POST(
     content: message,
   });
 
-  // ── Retrieve ─────────────────────────────────────────────────────
+  // ── Retrieve (non-streamed) ──────────────────────────────────────
   let chunks: RetrievedChunk[] = [];
   try {
     const queryVec = await embedQuery(message);
@@ -98,30 +100,6 @@ export async function POST(
     return json({ error: `검색 실패: ${(e as Error).message}` }, 500);
   }
 
-  // ── Generate ─────────────────────────────────────────────────────
-  let answer: string;
-  let tokensIn = 0;
-  let tokensOut = 0;
-  try {
-    const result = await generateAnswer({
-      model: room.model,
-      systemPrompt: buildSystemPrompt(room.system_prompt ?? ""),
-      userPrompt: buildUserPrompt(chunks, message),
-    });
-    answer = result.text || "응답을 생성하지 못했습니다.";
-    tokensIn = result.tokensIn;
-    tokensOut = result.tokensOut;
-  } catch (e) {
-    const msg = (e as Error).message;
-    if (/\b(503|429)\b|UNAVAILABLE|overload|high demand/i.test(msg)) {
-      return json(
-        { error: "AI 모델이 일시적으로 혼잡합니다. 잠시 후 다시 시도해 주세요." },
-        503,
-      );
-    }
-    return json({ error: `생성 실패: ${msg}` }, 500);
-  }
-
   const sources = chunks.map((c) => ({
     chunk_id: c.chunk_id,
     filename: c.filename,
@@ -129,26 +107,74 @@ export async function POST(
     similarity: c.similarity,
   }));
 
-  // ── Persist the assistant message ────────────────────────────────
-  await supabase
-    .schema("dground")
-    .from("messages")
-    .insert({
-      thread_id: threadId,
-      sender_id: null,
-      role: "assistant",
-      content: answer,
-      sources,
-      model: room.model,
-      tokens_in: tokensIn,
-      tokens_out: tokensOut,
-    });
+  // ── Stream the answer ────────────────────────────────────────────
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj: unknown) =>
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
 
-  await supabase
-    .schema("dground")
-    .from("threads")
-    .update({ last_message_at: new Date().toISOString() })
-    .eq("id", threadId);
+      send({ type: "sources", sources });
 
-  return json({ answer, sources, threadId });
+      let answer = "";
+      let tokensIn = 0;
+      let tokensOut = 0;
+
+      try {
+        for await (const event of streamAnswer({
+          model: room.model,
+          systemPrompt: buildSystemPrompt(room.system_prompt ?? ""),
+          userPrompt: buildUserPrompt(chunks, message),
+        })) {
+          if ("delta" in event) {
+            answer += event.delta;
+            send({ type: "delta", text: event.delta });
+          } else {
+            tokensIn = event.tokensIn;
+            tokensOut = event.tokensOut;
+          }
+        }
+      } catch (e) {
+        const msg = (e as Error).message;
+        const friendly = /\b(503|429)\b|UNAVAILABLE|overload|high demand/i.test(
+          msg,
+        )
+          ? "AI 모델이 일시적으로 혼잡합니다. 잠시 후 다시 시도해 주세요."
+          : `생성 실패: ${msg}`;
+        send({ type: "error", error: friendly });
+        controller.close();
+        return;
+      }
+
+      // Persist the assistant message once the stream is complete.
+      await supabase
+        .schema("dground")
+        .from("messages")
+        .insert({
+          thread_id: threadId,
+          sender_id: null,
+          role: "assistant",
+          content: answer || "응답을 생성하지 못했습니다.",
+          sources,
+          model: room.model,
+          tokens_in: tokensIn,
+          tokens_out: tokensOut,
+        });
+      await supabase
+        .schema("dground")
+        .from("threads")
+        .update({ last_message_at: new Date().toISOString() })
+        .eq("id", threadId);
+
+      send({ type: "done" });
+      controller.close();
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
+  });
 }
