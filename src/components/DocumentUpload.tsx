@@ -9,12 +9,25 @@ type State =
   | { kind: "done"; name: string; dedup: boolean }
   | { kind: "error"; message: string };
 
+const MAX_MB = 25;
+
 export default function DocumentUpload({ roomId }: { roomId: string }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<State>({ kind: "idle" });
 
   async function upload(file: File) {
+    if (file.size > MAX_MB * 1024 * 1024) {
+      setState({
+        kind: "error",
+        message: `파일이 ${MAX_MB}MB를 초과합니다 (${(
+          file.size /
+          1024 /
+          1024
+        ).toFixed(1)}MB).`,
+      });
+      return;
+    }
     setState({ kind: "uploading", name: file.name });
     const body = new FormData();
     body.append("file", file);
@@ -54,13 +67,18 @@ export default function DocumentUpload({ roomId }: { roomId: string }) {
           e.target.value = "";
         }}
       />
-      <button
-        onClick={() => inputRef.current?.click()}
-        disabled={busy}
-        className="group inline-flex h-10 items-center gap-2 border border-black bg-black px-4 text-sm font-bold text-white transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:oma-shadow-sm disabled:opacity-50"
-      >
-        {busy ? "색인 중…" : "+ PDF 업로드"}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          className="group inline-flex h-10 items-center gap-2 border border-black bg-black px-4 text-sm font-bold text-white transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:oma-shadow-sm disabled:opacity-50"
+        >
+          {busy ? "색인 중…" : "+ PDF 업로드"}
+        </button>
+        <span className="font-mono text-xs text-black/35">
+          PDF · 최대 {MAX_MB}MB
+        </span>
+      </div>
 
       {state.kind === "uploading" && (
         <p className="mt-2 font-mono text-xs text-black/45">
