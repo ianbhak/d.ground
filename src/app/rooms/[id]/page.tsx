@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function RoomPage({
@@ -21,29 +22,53 @@ export default async function RoomPage({
   if (!room) notFound();
 
   return (
-    <main className="mx-auto max-w-3xl px-8 py-12">
-      <Link
-        href="/rooms"
-        className="mb-8 inline-block text-sm text-[var(--color-ground-muted)] hover:text-black"
-      >
-        ← 내 방으로
-      </Link>
-
-      <header className="mb-8 space-y-2">
-        <h1 className="text-3xl font-light tracking-tight">{room.name}</h1>
-        {room.description && (
-          <p className="text-[var(--color-ground-muted)]">{room.description}</p>
-        )}
-        <div className="flex gap-3 pt-2 text-xs text-[var(--color-ground-muted)]">
-          <span>{room.model}</span>
-          <span>·</span>
-          <span>{room.sensitivity}</span>
-        </div>
+    <div className="min-h-screen">
+      <header className="flex items-center justify-between border-b border-black/10 px-6 py-4 sm:px-10">
+        <Brandmark />
+        <Link
+          href="/"
+          className="oma-label text-black/40 transition-colors hover:text-black"
+        >
+          ← 내 방
+        </Link>
       </header>
 
-      <div className="border border-dashed py-16 text-center text-sm text-[var(--color-ground-muted)]">
-        W2 작업 — 문서 업로드 & 채팅 UI는 다음 단계에서 추가됩니다.
-      </div>
-    </main>
+      <main className="mx-auto max-w-4xl px-6 py-14 oma-fade sm:px-10">
+        <p className="oma-label text-[var(--color-accent)]">Room</p>
+        <h1 className="mt-3 font-serif text-4xl tracking-tight">{room.name}</h1>
+        {room.description && (
+          <p className="mt-3 max-w-xl text-black/60">{room.description}</p>
+        )}
+        <div className="mt-5 flex flex-wrap gap-2">
+          <span className="oma-label border border-black/15 px-2.5 py-1 text-black/50">
+            {room.model}
+          </span>
+          <span className="oma-label border border-black/15 px-2.5 py-1 text-black/50">
+            {room.sensitivity}
+          </span>
+        </div>
+
+        <div className="mt-10 grid gap-px border border-black bg-black sm:grid-cols-3">
+          {[
+            { label: "문서", value: "0", hint: "W2 — 업로드 예정" },
+            { label: "멤버", value: "1", hint: "방장 (나)" },
+            { label: "스레드", value: "0", hint: "W3 — 채팅 예정" },
+          ].map((s) => (
+            <div key={s.label} className="bg-white p-5">
+              <p className="oma-label text-black/40">{s.label}</p>
+              <p className="mt-2 font-serif text-3xl">{s.value}</p>
+              <p className="mt-1 text-xs text-black/40">{s.hint}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-6 border border-dashed border-black/30 p-12 text-center">
+          <p className="oma-label text-black/40">Coming in W2 / W3</p>
+          <p className="mt-2 text-sm text-black/55">
+            문서 업로드 · RAG 채팅 UI는 다음 단계에서 추가됩니다.
+          </p>
+        </div>
+      </main>
+    </div>
   );
 }
