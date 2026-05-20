@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractPdfPages } from "@/lib/pdf";
+import { extractPdfContent } from "@/lib/pdf";
 import { chunkDocument } from "@/lib/chunking";
 import { embedTexts } from "@/lib/embedding";
 import { logAudit } from "@/lib/audit";
@@ -166,7 +166,7 @@ export async function POST(
     }
 
     try {
-      const pages = await extractPdfPages(bytes);
+      const pages = await extractPdfContent(bytes);
       const chunks = chunkDocument(pages);
       if (chunks.length === 0) {
         throw new Error("추출 가능한 텍스트가 없습니다 (스캔 PDF일 수 있음).");
