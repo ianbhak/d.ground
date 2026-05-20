@@ -136,12 +136,22 @@ export default async function RoomPage({
     <div className="min-h-screen">
       <header className="flex items-center justify-between border-b border-black/10 px-6 py-4 sm:px-10">
         <Brandmark />
-        <Link
-          href="/"
-          className="oma-label text-black/40 transition-colors hover:text-black"
-        >
-          ← 내 방
-        </Link>
+        <div className="flex items-center gap-4">
+          {isOwner && (
+            <Link
+              href={`/rooms/${room.id}/admin` as never}
+              className="oma-label text-black/40 transition-colors hover:text-black"
+            >
+              관리
+            </Link>
+          )}
+          <Link
+            href="/"
+            className="oma-label text-black/40 transition-colors hover:text-black"
+          >
+            ← 내 방
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto max-w-4xl px-6 py-14 oma-fade sm:px-10">
