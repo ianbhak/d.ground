@@ -93,7 +93,7 @@ export default async function NewRoomPage({
               name="name"
               required
               className={inputClass}
-              placeholder="예: 성수3 입찰 검토방"
+              placeholder="예: 논문 논의 방"
             />
           </div>
 
@@ -105,7 +105,7 @@ export default async function NewRoomPage({
               name="description"
               rows={3}
               className={inputClass}
-              placeholder="이 방의 목적, 다루는 문서"
+              placeholder="이 방의 목적, 다루는 문서 (예: 분야 핵심 논문 리뷰)"
             />
           </div>
 

@@ -34,37 +34,40 @@
   }
 }
 
-@layer utilities {
-  /* Hard offset shadows — no blur, signature OMA look */
-  .oma-shadow-sm {
-    box-shadow: 2px 2px 0 0 rgba(0, 0, 0, 1);
-  }
-  .oma-shadow-md {
-    box-shadow: 3.5px 3.5px 0 0 rgba(0, 0, 0, 1);
-  }
-  .oma-shadow-lg {
-    box-shadow: 6px 6px 0 0 rgba(0, 0, 0, 1);
-  }
+/* Hard offset shadows — no blur, signature OMA look.
+   Defined with @utility so variants (hover:, sm:, …) generate correctly. */
+@utility oma-shadow-sm {
+  box-shadow: 2px 2px 0 0 rgba(0, 0, 0, 1);
+}
+@utility oma-shadow-md {
+  box-shadow: 3.5px 3.5px 0 0 rgba(0, 0, 0, 1);
+}
+@utility oma-shadow-lg {
+  box-shadow: 6px 6px 0 0 rgba(0, 0, 0, 1);
+}
 
-  /* White card, thin black border, lifts on hover */
-  .oma-card {
-    background: #fff;
-    border: 1px solid #000;
-    transition: all 0.15s ease;
-  }
-  .oma-card:hover {
+/* White card, thin black border, lifts on hover */
+@utility oma-card {
+  background: #fff;
+  border: 1px solid #000;
+  transition: all 0.15s ease;
+  &:hover {
     transform: translate(-2px, -2px);
     box-shadow: 3.5px 3.5px 0 0 rgba(0, 0, 0, 1);
   }
+}
 
-  /* Mono label — uppercase, wide tracking */
-  .oma-label {
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    font-weight: 700;
-  }
+/* Mono label — uppercase, wide tracking */
+@utility oma-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+@utility oma-fade {
+  animation: oma-fade-up 0.5s ease both;
 }
 
 @keyframes oma-fade-up {
@@ -76,8 +79,4 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.oma-fade {
-  animation: oma-fade-up 0.5s ease both;
 }
