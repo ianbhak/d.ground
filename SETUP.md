@@ -1,20 +1,35 @@
 # d.ground — Setup Checklist
 
-Before `npm run dev` works, do these 4 things (≈ 10 min total).
+Before `npm run dev` works, do these 5 things (≈ 12 min total).
+Run `npm test` at the end to verify steps 1–3.
 
-## 1. Run the SQL migration
+## 1. Run the SQL migrations
 
-Supabase Dashboard → **SQL Editor** → New query → paste contents of
-[`supabase/migrations/0001_dground_init.sql`](supabase/migrations/0001_dground_init.sql) → **Run**.
+Supabase Dashboard → **SQL Editor** → New query → run each in order:
 
-This creates the `dground` schema, all tables, RLS policies, helper functions,
-and a private `dground-docs` storage bucket.
+1. [`supabase/migrations/0001_dground_init.sql`](supabase/migrations/0001_dground_init.sql)
+   — creates the `dground` schema, 10 tables, RLS policies, helper
+   functions, and the private `dground-docs` storage bucket.
+2. [`supabase/migrations/0002_dground_grants.sql`](supabase/migrations/0002_dground_grants.sql)
+   — grants table privileges to the `authenticated` / `service_role`
+   roles. A new schema does **not** inherit Supabase's default grants,
+   so without this every query fails with `42501 permission denied`.
 
 Verify with:
 ```sql
 SELECT table_name FROM information_schema.tables WHERE table_schema = 'dground' ORDER BY table_name;
 ```
 Expect 10 tables: `audit_log, chunks, invites, memberships, messages, room_documents, rooms, shared_documents, threads, usage_daily`.
+
+## 1b. Expose the `dground` schema to the Data API
+
+⚠️ **Critical** — without this the app fails with `PGRST106: Invalid schema: dground`.
+
+Supabase Dashboard → **Project Settings** → **API** → **Exposed schemas**
+→ add **`dground`** to the list (next to `public`, `graphql_public`) → **Save**.
+
+PostgREST (the REST layer the JS client uses) only serves schemas on this
+list. Creating the schema in SQL is not enough — it must be exposed here.
 
 ## 2. Add d.ground redirect URLs to Supabase
 
