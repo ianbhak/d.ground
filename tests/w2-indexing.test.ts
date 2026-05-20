@@ -5,7 +5,7 @@ import { embedTexts, EMBEDDING_DIM } from "../src/lib/embedding";
 /**
  * W2 indexing integration tests — hits the real Gemini embedding API
  * and the real Supabase DB. Verifies the embedding client and that
- * migration 0005 (768-dim chunks.embedding) is applied.
+ * migration 0012 (1536-dim chunks.embedding) is applied.
  */
 
 const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -15,7 +15,7 @@ const dot = (a: number[], b: number[]) =>
   a.reduce((s, x, i) => s + x * b[i], 0);
 
 describe("W2 — Gemini embeddings", () => {
-  it("embeds text into 768-dim vectors", async () => {
+  it("embeds text into 1536-dim vectors", async () => {
     const vecs = await embedTexts([
       "문서에 발 디딘 대화",
       "grounded RAG chatbot",
@@ -41,7 +41,7 @@ describe("W2 — Gemini embeddings", () => {
   });
 });
 
-describe("W2 — chunks store 768-dim embeddings (migration 0005)", () => {
+describe("W2 — chunks store 1536-dim embeddings (migration 0012)", () => {
   let admin: SupabaseClient;
   beforeAll(() => {
     admin = createClient(URL, SERVICE, {
@@ -49,7 +49,7 @@ describe("W2 — chunks store 768-dim embeddings (migration 0005)", () => {
     });
   });
 
-  it("accepts a shared_document + chunk with a 768-dim embedding", async () => {
+  it("accepts a shared_document + chunk with a 1536-dim embedding", async () => {
     const hash = `vitest-${Date.now()}`;
 
     const { data: sd, error: sdErr } = await admin

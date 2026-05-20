@@ -47,11 +47,13 @@ describe("W3 — match_chunks retrieval", () => {
       return;
     }
 
-    const qv = await embedQuery("사업 개요");
+    const queryText = "사업 개요";
+    const qv = await embedQuery(queryText);
     const { data, error } = await admin
       .schema("dground")
       .rpc("match_chunks", {
         query_embedding: JSON.stringify(qv),
+        query_text: queryText,
         p_room_id: rd.room_id,
         match_count: 5,
       });
@@ -94,6 +96,7 @@ describe("W3 — full RAG roundtrip", () => {
       .schema("dground")
       .rpc("match_chunks", {
         query_embedding: JSON.stringify(qv),
+        query_text: question,
         p_room_id: rd.room_id,
         match_count: 6,
       });

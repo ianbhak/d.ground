@@ -155,6 +155,7 @@ export async function POST(
       .schema("dground")
       .rpc("match_chunks", {
         query_embedding: JSON.stringify(queryVec),
+        query_text: message,
         p_room_id: roomId,
         match_count: TOP_K,
       });

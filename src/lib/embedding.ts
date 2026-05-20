@@ -1,9 +1,9 @@
 /**
  * Text embedding client — server-only. Backed by Google Gemini.
  *
- * Model: gemini-embedding-001, truncated to 768 dims (Matryoshka) and
- * L2-normalized. 768 keeps vectors well within pgvector's HNSW limit
- * and storage modest, with negligible quality loss.
+ * Model: gemini-embedding-001, truncated to 1536 dims (Matryoshka)
+ * and L2-normalized. 1536 stays within pgvector's HNSW 2000-dim index
+ * limit while giving higher fidelity than 768.
  *
  * Reuses the d.connect family's existing Gemini API key — no new vendor.
  */
@@ -14,7 +14,7 @@ const ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents";
 const MODEL = "models/gemini-embedding-001";
 
-export const EMBEDDING_DIM = 768;
+export const EMBEDDING_DIM = 1536;
 const BATCH = 100; // batchEmbedContents request cap
 
 type TaskType = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY";
