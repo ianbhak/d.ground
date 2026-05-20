@@ -72,7 +72,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 
 **개설**
 - Room Admin 이상이 방 개설 가능
-- 입력: 방 이름, 설명, 시스템 프롬프트, 모델 (기본 Sonnet), 민감도, 임베딩 모델 (시스템 디폴트)
+- 입력: 방 이름, 설명, 시스템 프롬프트, 모델 (기본 Gemini 2.5 Flash), 민감도, 임베딩 모델 (시스템 디폴트)
 
 **접근 제어 — 단일 초대 링크 모델**
 - 방은 항상 **비공개** (목록 비노출)
@@ -92,7 +92,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 
 **RAG 설정 (Room Admin)**
 - 시스템 프롬프트 편집
-- 모델 선택: `claude-sonnet-4-6` (기본) / `claude-opus-4-7` / `claude-haiku-4-5`
+- 모델 선택: `gemini-2.5-flash` (기본) / `gemini-2.5-pro` / `gemini-2.5-flash-lite`
 - top-k, temperature
 - 임베딩 모델은 시스템 디폴트 사용 (방별 변경 불가 — dedup 호환성 위해)
 
@@ -141,7 +141,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 **계산**
 - 모델/임베딩 단가 테이블을 코드 상수로 관리 (USD per 1M tokens)
 - Room Admin 콘솔에서 방별 일일/누적 비용 표시
-- (예상) Sonnet 4.6 기준 메시지 평균 비용 ~$0.014 (input 2K + output 500 토큰 기준)
+- (예상) Gemini 2.5 Flash 기준 메시지 평균 비용 ~$0.003 (input 4K + output 600 토큰 기준)
 
 **한도**
 - 방별 일일 토큰 한도 (Super Admin이 시스템 디폴트, Room Admin이 방별 조정)
@@ -205,8 +205,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 
 #### L5. 운영 정책 (v1)
 - **업로드 시 책임 동의 체크박스**: "이 문서에 민감정보가 포함된 경우 책임은 업로더에게 있으며, 플랫폼은 마스킹/보안 조치를 합리적 범위에서 제공합니다"
-- **Anthropic API zero-retention**: 가능한 경우 활성화 (대규모 계약 기준) — v1은 기본 30일 retention
-- **Voyage AI 데이터 처리**: 임베딩 API는 원문을 학습 데이터로 사용하지 않음 — 약관 페이지 링크 명시
+- **Gemini API 데이터 처리**: 유료 등급(paid tier)의 Gemini API는 입력 데이터를 모델 학습에 사용하지 않음 — 프로젝트를 유료 등급으로 운영하고 약관 페이지 링크를 명시. (무료 등급은 학습에 사용될 수 있으므로 운영 환경에서는 유료 등급 필수)
 - **감사 로그**: 업로드/조회/삭제/마스킹 액션 전체 기록 (90일 보관)
 - **방 삭제 시 데이터 처리**:
   - 방 삭제 → 30일 grace period (복구 가능)
@@ -250,7 +249,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 
 ### 4.4 어드민이 비용 확인 후 모델 변경
 1. 사용량 대시보드에서 방별 누적 비용 확인 (모델별 분해)
-2. Opus → Sonnet으로 변경 → 신규 메시지부터 반영
+2. Pro → Flash로 변경 → 신규 메시지부터 반영
 
 ---
 
@@ -264,7 +263,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 | 데이터 격리 | SharedDocument 도입에도 불구하고 방 간 검색 누출 0건 — 단위 테스트로 강제 |
 | 비용 통제 | 유저별/방별 일일 토큰 한도, 한도 초과 시 차단 |
 | 로깅 | 모든 챗 메시지/검색 쿼리/관리 액션 감사 로그, 비용 텔레메트리 |
-| 캐시 | Claude prompt caching 적극 활용 (시스템 프롬프트 + 자주 쓰이는 문서 청크) → 비용 50%+ 절감 |
+| 캐시 | Gemini context caching 활용 (시스템 프롬프트 + 자주 쓰이는 문서 청크) → 입력 비용 절감 |
 
 ---
 
@@ -281,7 +280,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 | **데이터 접근** | Supabase JS 클라이언트 (PostgREST) + Postgres RPC 함수 | RLS 자동 적용. 별도 ORM·직접 연결(`DATABASE_URL`) 없음 |
 | **타입** | `supabase gen types`로 DB 스키마에서 자동 생성 | `npm run db:types` → `src/lib/database.types.ts` |
 | **벡터 검색** | Postgres 함수 `match_chunks()` + `supabase.rpc()` | room_documents join을 함수에 내장 → ACL·방 격리 강제 |
-| **LLM (생성)** | Claude API — Sonnet 4.6 (기본) / Opus 4.7 / Haiku 4.5 | 방별 선택, prompt caching 사용 |
+| **LLM (생성)** | Gemini API — 2.5 Flash (기본) / 2.5 Pro / 2.5 Flash-Lite | 방별 선택. 임베딩과 동일 벤더·키, 별도 ANTHROPIC 키 불필요 |
 | **임베딩 (확정)** | **Voyage AI `voyage-3-lite`** | $0.02/1M, 다국어 지원, 한국어 품질 양호. 부족 시 `voyage-3`로 업그레이드 |
 | **PDF 파싱** | `unpdf` (Node) | 서버사이드 텍스트 추출 |
 | **청킹** | 자체 구현 (500 토큰 / 50 오버랩, 문단 경계 우선) | |
@@ -291,20 +290,20 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 | **배포** | Vercel (앱) + Supabase (DB/Storage/Realtime, **라인업 공통**) | `dground.dconnect.kr` 서브도메인. Free → Pro 업그레이드 시점은 W7 직전 |
 | **모니터링** | Vercel Analytics + Sentry | |
 
-### 모델 단가 참고 (2026-05 기준, USD per 1M tokens)
+### 모델 단가 참고 (2026 초 기준, USD per 1M tokens)
 
-| 모델 | Input | Output | Cache write | Cache read |
-|---|---|---|---|---|
-| claude-opus-4-7 | $15 | $75 | $18.75 | $1.50 |
-| claude-sonnet-4-6 | $3 | $15 | $3.75 | $0.30 |
-| claude-haiku-4-5 | $1 | $5 | $1.25 | $0.10 |
-| voyage-3-lite (embedding) | $0.02 | — | — | — |
+| 모델 | Input | Output | 비고 |
+|---|---|---|---|
+| gemini-2.5-flash-lite | $0.10 | $0.40 | 최저비용 |
+| gemini-2.5-flash | $0.30 | $2.50 | **기본** |
+| gemini-2.5-pro | $1.25 | $10 | 고품질 |
+| gemini-embedding-001 | 무료 티어 | — | 임베딩 |
 
-> 메시지당 예상 비용 (input 2K + output 500 토큰, 캐시 없음):
-> - Haiku: ~$0.0045
-> - Sonnet: ~$0.014
-> - Opus: ~$0.068
-> 캐시 적용 시 input 비용 -90%, 메시지당 비용 30~50% 절감.
+> 메시지당 예상 비용 (input 4K + output 600 토큰, 캐시 없음):
+> - Flash-Lite: ~$0.0006
+> - Flash: ~$0.0027
+> - Pro: ~$0.011
+> context caching 적용 시 입력 비용 추가 절감. (참고: Claude Sonnet은 동일 조건 ~$0.021로 Flash의 8배)
 
 ---
 
@@ -403,7 +402,7 @@ LIMIT $top_k;
 ### v1 제외 (백로그)
 - DOCX/TXT/MD 업로드 (PDF만 우선)
 - 음성/이미지 입력
-- 비Claude 모델 (OpenAI/Gemini)
+- 비Gemini 모델 (Claude/OpenAI) — 방별 picker는 Gemini 티어만
 - Webhook / API 외부 통합
 - 모바일 앱 (반응형 웹만)
 - 방별 임베딩 모델 선택 (dedup 깨짐 — 시스템 단일 디폴트)
@@ -422,7 +421,7 @@ LIMIT $top_k;
 | 3 | Super Admin 지정 | **ENV 화이트리스트** (`SUPER_ADMINS=...`) |
 | 4 | 쿼터 | **시스템 hard cap + 방별 조정 가능** — 디폴트: 방당 100문서/500MB/500K tokens/day |
 | 5 | 임베딩 모델 | **Voyage `voyage-3-lite`** ($0.02/1M, 한국어 OK) |
-| 6 | 생성 모델 선택 | **어드민이 방별 선택** (Sonnet/Opus/Haiku) + **방별 비용 가시화** |
+| 6 | 생성 모델 | **Gemini로 통일** — 2.5 Flash 기본, 방별 picker(Flash/Pro/Flash-Lite) + 비용 가시화. Claude 대비 ~8x 저렴, 임베딩과 동일 벤더 |
 | 7 | 문서 dedup | **시스템 전역 SharedDocument 패턴** (해시 기반, ACL은 매핑 테이블로) |
 | 8 | 공용 스레드 모더레이션 | **Room Admin이 임의 메시지 삭제 가능** (soft delete + 감사 로그) |
 | 9 | 민감정보 처리 | **5계층 접근** — L1 PII 자동 스캔 (정규식) + L2 어드민 결정 UI + L5 운영 정책은 v1, L3 방 민감도 등급 + L4 응답 필터는 v1.5 |
@@ -451,7 +450,7 @@ LIMIT $top_k;
 1. **임베딩 한국어 벤치**: voyage-3-lite vs voyage-3 — 첫 방 PDF로 실측 후 결정.
 2. **prompt caching 전략**: 시스템 프롬프트만 캐시 vs 자주 쓰이는 청크까지 캐시 — 트래픽 보고 결정.
 3. **초대 링크 보안**: 토큰은 시간 만료 없이 재발급으로만 무효화 — 유출 위험이 큰 방은 confidential 등급 + 주기적 재발급 안내로 충분한지 검토.
-4. **Anthropic zero-retention**: 활성화 조건 / 비용 / 신청 절차 확인 필요.
+4. **Gemini API 등급**: 운영 환경은 유료 등급(데이터 미학습) 필수 — 무료 등급 한도와 유료 전환 시점 확인 필요.
 5. **방 삭제 grace period**: 30일이 적정한지 — 법인 사용 사례에 따라 조정 가능.
 6. **PII 마스킹 false positive**: 정규식 오검출 (사업자번호 형식과 다른 숫자열 등) — 시드 PDF로 정확도 측정 후 패턴 튜닝.
 7. **공통 `profiles` 테이블 소유권**: d.connect가 현재 마스터 — d.ground/d.translate가 컬럼 추가 필요할 때 라인업 공통 마이그레이션 절차 정해야 함.

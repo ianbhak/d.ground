@@ -16,7 +16,7 @@ async function createRoom(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim() || null;
   const systemPrompt = String(formData.get("system_prompt") ?? "").trim();
-  const model = String(formData.get("model") ?? "claude-sonnet-4-6");
+  const model = String(formData.get("model") ?? "gemini-2.5-flash");
   const sensitivityRaw = String(formData.get("sensitivity") ?? "internal");
   const sensitivity = (SENSITIVITIES as readonly string[]).includes(
     sensitivityRaw,
@@ -134,17 +134,17 @@ export default async function NewRoomPage({
             <label className="oma-label block text-black/60">모델</label>
             <select
               name="model"
-              defaultValue="claude-sonnet-4-6"
+              defaultValue="gemini-2.5-flash"
               className={inputClass}
             >
-              <option value="claude-sonnet-4-6">
-                Claude Sonnet 4.6 — 균형 (기본)
+              <option value="gemini-2.5-flash">
+                Gemini 2.5 Flash — 균형 (기본)
               </option>
-              <option value="claude-opus-4-7">
-                Claude Opus 4.7 — 고품질·고비용
+              <option value="gemini-2.5-pro">
+                Gemini 2.5 Pro — 고품질·고비용
               </option>
-              <option value="claude-haiku-4-5">
-                Claude Haiku 4.5 — 빠름·저비용
+              <option value="gemini-2.5-flash-lite">
+                Gemini 2.5 Flash-Lite — 빠름·최저비용
               </option>
             </select>
           </div>
