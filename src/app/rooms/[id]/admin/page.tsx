@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isUuid } from "@/lib/slug";
+import { isUuid, decodeRoomParam } from "@/lib/slug";
 import {
   estimateCostUsd,
   formatUsd,
@@ -27,7 +27,8 @@ export default async function AdminPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ saved?: string; error?: string }>;
 }) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeRoomParam(rawId);
   const { saved, error } = await searchParams;
 
   const supabase = await createSupabaseServerClient();

@@ -6,7 +6,7 @@ import DocumentUpload from "@/components/DocumentUpload";
 import RoomChatTabs from "@/components/RoomChatTabs";
 import { type ChatMessage } from "@/components/RoomChat";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { isUuid } from "@/lib/slug";
+import { isUuid, decodeRoomParam } from "@/lib/slug";
 import { detachDocument } from "./actions";
 
 function formatBytes(n: number): string {
@@ -26,7 +26,8 @@ export default async function RoomPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = decodeRoomParam(rawId);
   const supabase = await createSupabaseServerClient();
 
   const {

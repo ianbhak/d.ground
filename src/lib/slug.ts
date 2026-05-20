@@ -26,3 +26,16 @@ export function isUuid(s: string): boolean {
     s,
   );
 }
+
+/**
+ * Normalize a room URL param to the value stored in the DB.
+ * Route params may arrive percent-encoded; decoding is a no-op when
+ * the value is already decoded.
+ */
+export function decodeRoomParam(param: string): string {
+  try {
+    return decodeURIComponent(param);
+  } catch {
+    return param;
+  }
+}
