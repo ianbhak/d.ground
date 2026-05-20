@@ -82,34 +82,42 @@ export default function RoomChat({
           </p>
         )}
 
-        {messages.map((m, i) => (
-          <div key={i}>
-            <p className="oma-label mb-1 text-black/35">
-              {m.role === "user" ? "나" : "d.ground"}
-            </p>
+        {messages.map((m, i) => {
+          const isUser = m.role === "user";
+          return (
             <div
-              className={
-                m.role === "user"
-                  ? "border-l-2 border-l-black pl-3 text-sm"
-                  : "border-l-2 border-l-[var(--color-accent)] pl-3 text-sm leading-relaxed"
-              }
+              key={i}
+              className={`flex flex-col ${
+                isUser ? "items-end" : "items-start"
+              }`}
             >
-              <p className="whitespace-pre-wrap">{m.content}</p>
-              {m.role === "assistant" && dedupeSources(m.sources).length > 0 && (
-                <p className="mt-2 font-mono text-xs text-black/40">
-                  출처: {dedupeSources(m.sources).join(" · ")}
-                </p>
-              )}
+              <p className="oma-label mb-1 text-black/35">
+                {isUser ? "나" : "d.ground"}
+              </p>
+              <div
+                className={`max-w-[85%] border px-3.5 py-2.5 text-sm leading-relaxed ${
+                  isUser
+                    ? "border-black bg-black text-white"
+                    : "border-l-2 border-l-[var(--color-accent)] border-black bg-white"
+                }`}
+              >
+                <p className="whitespace-pre-wrap">{m.content}</p>
+                {!isUser && dedupeSources(m.sources).length > 0 && (
+                  <p className="mt-2 font-mono text-xs text-black/40">
+                    출처: {dedupeSources(m.sources).join(" · ")}
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {sending && (
-          <div>
+          <div className="flex flex-col items-start">
             <p className="oma-label mb-1 text-black/35">d.ground</p>
-            <p className="border-l-2 border-l-[var(--color-accent)] pl-3 text-sm text-black/40">
+            <div className="max-w-[85%] border border-l-2 border-black border-l-[var(--color-accent)] bg-white px-3.5 py-2.5 text-sm text-black/40">
               문서를 검색하고 답변을 생성하는 중…
-            </p>
+            </div>
           </div>
         )}
 
