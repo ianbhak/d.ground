@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logAudit } from "@/lib/audit";
 
 const MODELS = new Set([
   "gemini-2.5-flash",
@@ -12,8 +13,8 @@ const MODELS = new Set([
 ]);
 const SENSITIVITIES = new Set(["public", "internal", "confidential"]);
 
-/** Verify the caller owns the room. Throws otherwise. */
-async function assertOwner(roomId: string) {
+/** Verify the caller owns the room. Returns the caller's id. */
+async function assertOwner(roomId: string): Promise<string> {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
@@ -29,11 +30,12 @@ async function assertOwner(roomId: string) {
   if (!room || room.owner_id !== user.id) {
     throw new Error("forbidden — room owner only");
   }
+  return user.id;
 }
 
 export async function updateRoomSettings(formData: FormData) {
   const roomId = String(formData.get("room_id") ?? "");
-  await assertOwner(roomId);
+  const actorId = await assertOwner(roomId);
 
   const name = String(formData.get("name") ?? "").trim();
   if (!name) redirect(`/rooms/${roomId}/admin?error=name_required`);
@@ -91,6 +93,13 @@ export async function updateRoomSettings(formData: FormData) {
     redirect(`/rooms/${roomId}/admin?error=${encodeURIComponent(error.message)}`);
   }
 
+  await logAudit({
+    actorId,
+    action: "room.settings_update",
+    targetType: "room",
+    targetId: roomId,
+  });
+
   revalidatePath(`/rooms/${roomId}/admin`);
   revalidatePath(`/rooms/${roomId}`);
   redirect(`/rooms/${roomId}/admin?saved=1`);
@@ -99,7 +108,7 @@ export async function updateRoomSettings(formData: FormData) {
 export async function removeMember(formData: FormData) {
   const roomId = String(formData.get("room_id") ?? "");
   const memberId = String(formData.get("user_id") ?? "");
-  await assertOwner(roomId);
+  const actorId = await assertOwner(roomId);
 
   const admin = createSupabaseAdminClient();
 
@@ -120,6 +129,14 @@ export async function removeMember(formData: FormData) {
     .delete()
     .eq("room_id", roomId)
     .eq("user_id", memberId);
+
+  await logAudit({
+    actorId,
+    action: "member.remove",
+    targetType: "room",
+    targetId: roomId,
+    metadata: { member: memberId },
+  });
 
   revalidatePath(`/rooms/${roomId}/admin`);
 }

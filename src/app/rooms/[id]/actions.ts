@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { logAudit } from "@/lib/audit";
 
 /**
  * Regenerate a room's invite token. RLS (rooms_update) restricts this
@@ -99,6 +100,13 @@ export async function detachDocument(formData: FormData) {
       await admin.storage.from("dground-docs").remove([sd.storage_path]);
     }
   }
+
+  await logAudit({
+    actorId: user.id,
+    action: "document.detach",
+    targetType: "room",
+    targetId: roomId,
+  });
 
   revalidatePath(`/rooms/${roomId}`);
 }

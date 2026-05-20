@@ -4,6 +4,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { extractPdfPages } from "@/lib/pdf";
 import { chunkDocument } from "@/lib/chunking";
 import { embedTexts } from "@/lib/embedding";
+import { logAudit } from "@/lib/audit";
 
 const BUCKET = "dground-docs";
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB per file
@@ -212,6 +213,14 @@ export async function POST(
   if (rdErr && !/duplicate|unique/i.test(rdErr.message)) {
     return json({ error: rdErr.message }, 500);
   }
+
+  await logAudit({
+    actorId: user.id,
+    action: "document.upload",
+    targetType: "room",
+    targetId: roomId,
+    metadata: { filename: file.name, dedup },
+  });
 
   return json({ ok: true, dedup });
 }

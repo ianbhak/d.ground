@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { isSuperAdmin } from "@/lib/super-admin";
 import Brandmark from "@/components/Brandmark";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import SignOutButton from "@/components/SignOutButton";
@@ -57,6 +58,14 @@ export default async function HomePage() {
             <span className="hidden font-mono text-xs text-black/40 sm:block">
               {user.email}
             </span>
+            {isSuperAdmin(user.email) && (
+              <Link
+                href="/admin"
+                className="oma-label text-black/40 transition-colors hover:text-black"
+              >
+                운영
+              </Link>
+            )}
             <SignOutButton />
           </div>
         ) : (

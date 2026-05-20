@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { logAudit } from "@/lib/audit";
 
 const SENSITIVITIES = ["public", "internal", "confidential"] as const;
 
@@ -59,6 +60,14 @@ async function createRoom(formData: FormData) {
     visibility: "shared",
     user_id: null,
     title: "공용 스레드",
+  });
+
+  await logAudit({
+    actorId: user.id,
+    action: "room.create",
+    targetType: "room",
+    targetId: room.id,
+    metadata: { name },
   });
 
   redirect(`/rooms/${room.id}`);
