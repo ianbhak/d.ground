@@ -94,12 +94,25 @@ export async function POST(
     }
   }
 
-  await supabase.schema("dground").from("messages").insert({
-    thread_id: threadId,
-    sender_id: user.id,
-    role: "user",
-    content: message,
-  });
+  const meta = user.user_metadata ?? {};
+  const senderName =
+    (meta.full_name as string) ||
+    (meta.name as string) ||
+    user.email ||
+    "멤버";
+
+  const { data: userMsg } = await supabase
+    .schema("dground")
+    .from("messages")
+    .insert({
+      thread_id: threadId,
+      sender_id: user.id,
+      role: "user",
+      content: message,
+      sender_name: senderName,
+    })
+    .select("id")
+    .single();
 
   // ── Retrieve (non-streamed) ──────────────────────────────────────
   let chunks: RetrievedChunk[] = [];
@@ -132,6 +145,7 @@ export async function POST(
       const send = (obj: unknown) =>
         controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
 
+      send({ type: "user_id", id: userMsg?.id ?? null });
       send({ type: "sources", sources });
 
       let answer = "";
@@ -165,7 +179,7 @@ export async function POST(
       }
 
       // Persist the assistant message once the stream is complete.
-      await supabase
+      const { data: asstMsg } = await supabase
         .schema("dground")
         .from("messages")
         .insert({
@@ -177,14 +191,16 @@ export async function POST(
           model: room.model,
           tokens_in: tokensIn,
           tokens_out: tokensOut,
-        });
+        })
+        .select("id")
+        .single();
       await supabase
         .schema("dground")
         .from("threads")
         .update({ last_message_at: new Date().toISOString() })
         .eq("id", threadId);
 
-      send({ type: "done" });
+      send({ type: "done", id: asstMsg?.id ?? null });
       controller.close();
     },
   });

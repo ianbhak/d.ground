@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface Source {
   filename: string;
@@ -8,10 +9,12 @@ interface Source {
 }
 
 export interface ChatMessage {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   sources?: Source[];
-  mine?: boolean; // shared thread: was this sent by the current user
+  mine?: boolean;
+  senderName?: string;
 }
 
 export type ChatMode = "private" | "shared";
@@ -30,21 +33,92 @@ export default function RoomChat({
   mode,
   initialMessages,
   hasDocuments,
+  currentUserId,
+  sharedThreadId,
 }: {
   roomId: string;
   mode: ChatMode;
   initialMessages: ChatMessage[];
   hasDocuments: boolean;
+  currentUserId: string;
+  sharedThreadId?: string;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const seenIds = useRef(
+    new Set<string>(
+      initialMessages.map((m) => m.id).filter((x): x is string => !!x),
+    ),
+  );
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Live updates for the shared thread — other members' messages.
+  useEffect(() => {
+    if (mode !== "shared" || !sharedThreadId) return;
+    const supabase = createSupabaseBrowserClient();
+    const channel = supabase
+      .channel(`shared-${sharedThreadId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "dground",
+          table: "messages",
+          filter: `thread_id=eq.${sharedThreadId}`,
+        },
+        (payload) => {
+          const row = payload.new as {
+            id: string;
+            role: "user" | "assistant";
+            content: string;
+            sources: unknown;
+            sender_id: string | null;
+            sender_name: string | null;
+          };
+          if (seenIds.current.has(row.id)) return;
+          if (row.sender_id === currentUserId) return; // my own echo
+          seenIds.current.add(row.id);
+          setMessages((m) => {
+            // Backstop: skip an assistant row identical to the answer
+            // I just streamed (its id may not be in seenIds yet).
+            if (row.role === "assistant") {
+              const last = m[m.length - 1];
+              if (
+                last &&
+                last.role === "assistant" &&
+                last.content === row.content
+              ) {
+                return m;
+              }
+            }
+            return [
+              ...m,
+              {
+                id: row.id,
+                role: row.role,
+                content: row.content,
+                sources: Array.isArray(row.sources)
+                  ? (row.sources as Source[])
+                  : [],
+                mine: false,
+                senderName: row.sender_name ?? undefined,
+              },
+            ];
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [mode, sharedThreadId, currentUserId]);
 
   function updateLast(fn: (msg: ChatMessage) => ChatMessage) {
     setMessages((m) => {
@@ -99,6 +173,7 @@ export default function RoomChat({
             text?: string;
             sources?: Source[];
             error?: string;
+            id?: string | null;
           };
           try {
             evt = JSON.parse(line);
@@ -106,7 +181,9 @@ export default function RoomChat({
             continue;
           }
 
-          if (evt.type === "sources") {
+          if (evt.type === "user_id" || evt.type === "done") {
+            if (evt.id) seenIds.current.add(evt.id);
+          } else if (evt.type === "sources") {
             updateLast((msg) => ({ ...msg, sources: evt.sources ?? [] }));
           } else if (evt.type === "delta") {
             updateLast((msg) => ({
@@ -149,7 +226,11 @@ export default function RoomChat({
           const isRight = m.mine ?? m.role === "user";
           const isStreaming = m.role === "assistant" && m.content === "";
           const label =
-            m.role === "assistant" ? "d.ground" : isRight ? "나" : "멤버";
+            m.role === "assistant"
+              ? "d.ground"
+              : isRight
+                ? "나"
+                : (m.senderName ?? "멤버");
           return (
             <div
               key={i}

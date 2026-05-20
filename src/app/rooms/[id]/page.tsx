@@ -69,6 +69,7 @@ export default async function RoomPage({
   // Load chat history for both threads (private 1:1 + room-wide shared).
   let privateMessages: ChatMessage[] = [];
   let sharedMessages: ChatMessage[] = [];
+  let sharedThreadId: string | undefined;
 
   if (user) {
     const { data: threads } = await supabase
@@ -83,25 +84,36 @@ export default async function RoomPage({
     const sharedThread = (threads ?? []).find(
       (t) => t.visibility === "shared",
     );
+    sharedThreadId = sharedThread?.id;
 
     const asMessages = (
-      rows: { role: string; content: string; sources: unknown; sender_id: string | null }[],
+      rows: {
+        id: string;
+        role: string;
+        content: string;
+        sources: unknown;
+        sender_id: string | null;
+        sender_name: string | null;
+      }[],
     ): ChatMessage[] =>
       rows.map((m) => ({
+        id: m.id,
         role: m.role as "user" | "assistant",
         content: m.content,
         sources: Array.isArray(m.sources)
           ? (m.sources as { filename: string; page: number | null }[])
           : [],
-        mine:
-          m.role === "assistant" ? false : m.sender_id === user.id,
+        mine: m.role === "assistant" ? false : m.sender_id === user.id,
+        senderName: m.sender_name ?? undefined,
       }));
+
+    const selectCols = "id, role, content, sources, sender_id, sender_name";
 
     if (privateThread) {
       const { data: msgs } = await supabase
         .schema("dground")
         .from("messages")
-        .select("role, content, sources, sender_id")
+        .select(selectCols)
         .eq("thread_id", privateThread.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
@@ -112,7 +124,7 @@ export default async function RoomPage({
       const { data: msgs } = await supabase
         .schema("dground")
         .from("messages")
-        .select("role, content, sources, sender_id")
+        .select(selectCols)
         .eq("thread_id", sharedThread.id)
         .is("deleted_at", null)
         .order("created_at", { ascending: true });
@@ -215,6 +227,8 @@ export default async function RoomPage({
             <RoomChatTabs
               roomId={room.id}
               hasDocuments={hasIndexedDocs}
+              currentUserId={user?.id ?? ""}
+              sharedThreadId={sharedThreadId}
               privateMessages={privateMessages}
               sharedMessages={sharedMessages}
             />

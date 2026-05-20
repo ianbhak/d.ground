@@ -11,11 +11,15 @@ import RoomChat, { type ChatMessage } from "./RoomChat";
 export default function RoomChatTabs({
   roomId,
   hasDocuments,
+  currentUserId,
+  sharedThreadId,
   privateMessages,
   sharedMessages,
 }: {
   roomId: string;
   hasDocuments: boolean;
+  currentUserId: string;
+  sharedThreadId?: string;
   privateMessages: ChatMessage[];
   sharedMessages: ChatMessage[];
 }) {
@@ -50,6 +54,7 @@ export default function RoomChatTabs({
           mode="private"
           initialMessages={privateMessages}
           hasDocuments={hasDocuments}
+          currentUserId={currentUserId}
         />
       </div>
       <div className={tab === "shared" ? "" : "hidden"}>
@@ -58,6 +63,8 @@ export default function RoomChatTabs({
           mode="shared"
           initialMessages={sharedMessages}
           hasDocuments={hasDocuments}
+          currentUserId={currentUserId}
+          sharedThreadId={sharedThreadId}
         />
       </div>
     </div>
