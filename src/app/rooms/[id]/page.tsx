@@ -2,7 +2,20 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Brandmark from "@/components/Brandmark";
 import InviteLinkCard from "@/components/InviteLinkCard";
+import DocumentUpload from "@/components/DocumentUpload";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "색인 중",
+  indexed: "색인 완료",
+  failed: "실패",
+};
 
 export default async function RoomPage({
   params,
@@ -27,6 +40,27 @@ export default async function RoomPage({
   if (!room) notFound();
 
   const isOwner = user?.id === room.owner_id;
+
+  const { data: docsRaw } = await supabase
+    .schema("dground")
+    .from("room_documents")
+    .select(
+      "id, display_filename, attached_at, shared_documents(status, byte_size)",
+    )
+    .eq("room_id", id)
+    .order("attached_at", { ascending: false });
+
+  const docs = (docsRaw ?? []).map((d) => {
+    const sd = Array.isArray(d.shared_documents)
+      ? d.shared_documents[0]
+      : d.shared_documents;
+    return {
+      id: d.id as string,
+      name: d.display_filename as string,
+      status: (sd?.status as string) ?? "pending",
+      bytes: (sd?.byte_size as number) ?? 0,
+    };
+  });
 
   return (
     <div className="min-h-screen">
@@ -63,24 +97,60 @@ export default async function RoomPage({
           />
         </div>
 
-        <div className="mt-8 grid gap-px border border-black bg-black sm:grid-cols-3">
-          {[
-            { label: "문서", value: "0", hint: "W2 — 업로드 예정" },
-            { label: "멤버", value: "1", hint: "방장 (나)" },
-            { label: "스레드", value: "0", hint: "W3 — 채팅 예정" },
-          ].map((s) => (
-            <div key={s.label} className="bg-white p-5">
-              <p className="oma-label text-black/40">{s.label}</p>
-              <p className="mt-2 font-serif text-3xl">{s.value}</p>
-              <p className="mt-1 text-xs text-black/40">{s.hint}</p>
+        {/* ── Documents ──────────────────────────────────────── */}
+        <section className="mt-10">
+          <div className="flex items-end justify-between border-b border-black/10 pb-3">
+            <div>
+              <p className="oma-label text-black/40">Ground</p>
+              <h2 className="mt-1 font-serif text-2xl">
+                문서 <span className="text-black/30">{docs.length}</span>
+              </h2>
             </div>
-          ))}
-        </div>
+            {isOwner && <DocumentUpload roomId={room.id} />}
+          </div>
 
-        <div className="mt-6 border border-dashed border-black/30 p-12 text-center">
-          <p className="oma-label text-black/40">Coming in W2 / W3</p>
+          {docs.length > 0 ? (
+            <ul className="mt-4 divide-y border-y border-black/10">
+              {docs.map((d) => (
+                <li
+                  key={d.id}
+                  className="flex items-center justify-between py-3"
+                >
+                  <span className="min-w-0 truncate pr-4 text-sm">
+                    {d.name}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-3">
+                    <span className="font-mono text-xs text-black/35">
+                      {formatBytes(d.bytes)}
+                    </span>
+                    <span
+                      className={`oma-label ${
+                        d.status === "failed"
+                          ? "text-[var(--color-accent)]"
+                          : d.status === "indexed"
+                            ? "text-black/50"
+                            : "text-black/35"
+                      }`}
+                    >
+                      {STATUS_LABEL[d.status] ?? d.status}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-4 border border-dashed border-black/30 p-12 text-center text-sm text-black/50">
+              {isOwner
+                ? "PDF를 업로드해 이 방의 ground를 만드세요."
+                : "아직 업로드된 문서가 없습니다."}
+            </div>
+          )}
+        </section>
+
+        <div className="mt-6 border border-dashed border-black/30 p-10 text-center">
+          <p className="oma-label text-black/40">Coming in W3</p>
           <p className="mt-2 text-sm text-black/55">
-            문서 업로드 · RAG 채팅 UI는 다음 단계에서 추가됩니다.
+            문서가 색인되면 RAG 채팅이 여기에 추가됩니다.
           </p>
         </div>
       </main>
