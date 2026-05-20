@@ -8,7 +8,7 @@
 > *문서에 발 디딘 대화.*
 
 **d.ground** is a multi-tenant RAG chatbot platform for domain experts.
-Open your own **Room**, upload domain documents (SCI papers, construction bid specs, performance requirements, internal manuals), and invite members to ask questions — every answer grounded in your sources.
+Open your own **Room**, upload domain documents (SCI papers, API references, design system docs, internal manuals), and invite members to ask questions — every answer grounded in your sources.
 
 Part of the **d.connect** family (d.connect · d.translate · d.present · d.ground).
 

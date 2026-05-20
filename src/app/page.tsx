@@ -79,7 +79,7 @@ export default async function HomePage() {
         </h1>
         <div className="oma-fade mt-6 h-px w-20 bg-black" />
         <p className="oma-fade mt-6 max-w-xl text-base leading-relaxed text-black/60 sm:text-lg">
-          SCI급 논문, 건설 입찰공고·성능요구서, 사내 매뉴얼을 올리면
+          SCI급 논문, API 레퍼런스·디자인 시스템 문서, 사내 매뉴얼을 올리면
           <br className="hidden sm:block" />
           팀 전용 RAG 챗봇이 <strong className="font-semibold text-black">
             환각 없이 출처와 함께
