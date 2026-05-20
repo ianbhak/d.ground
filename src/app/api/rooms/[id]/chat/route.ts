@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { embedQuery } from "@/lib/embedding";
 import { streamAnswer } from "@/lib/generation";
 import {
@@ -46,11 +47,43 @@ export async function POST(
   const { data: room } = await supabase
     .schema("dground")
     .from("rooms")
-    .select("id, model, system_prompt")
+    .select("id, model, system_prompt, quota_daily_tokens")
     .eq("id", roomId)
     .is("deleted_at", null)
     .single();
   if (!room) return json({ error: "room not found or no access" }, 404);
+
+  // ── Daily token quota (rolling 24h, room-wide) ───────────────────
+  {
+    const admin = createSupabaseAdminClient();
+    const { data: roomThreads } = await admin
+      .schema("dground")
+      .from("threads")
+      .select("id")
+      .eq("room_id", roomId);
+    const threadIds = (roomThreads ?? []).map((t) => t.id);
+    if (threadIds.length > 0) {
+      const since = new Date(Date.now() - 86_400_000).toISOString();
+      const { data: recent } = await admin
+        .schema("dground")
+        .from("messages")
+        .select("tokens_in, tokens_out")
+        .in("thread_id", threadIds)
+        .gte("created_at", since);
+      const used = (recent ?? []).reduce(
+        (s, m) => s + (m.tokens_in ?? 0) + (m.tokens_out ?? 0),
+        0,
+      );
+      if (used >= room.quota_daily_tokens) {
+        return json(
+          {
+            error: `이 방의 24시간 토큰 한도(${room.quota_daily_tokens.toLocaleString()})에 도달했습니다. 잠시 후 다시 시도해 주세요.`,
+          },
+          429,
+        );
+      }
+    }
+  }
 
   // ── Resolve the thread ───────────────────────────────────────────
   // shared: the room's single shared thread (always exists).

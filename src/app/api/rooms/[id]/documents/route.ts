@@ -38,7 +38,7 @@ export async function POST(
   const { data: room } = await supabase
     .schema("dground")
     .from("rooms")
-    .select("id, owner_id")
+    .select("id, owner_id, quota_docs, quota_bytes")
     .eq("id", roomId)
     .is("deleted_at", null)
     .single();
@@ -72,6 +72,40 @@ export async function POST(
   const hash = createHash("sha256").update(bytes).digest("hex");
 
   const admin = createSupabaseAdminClient();
+
+  // ── Quota: document count + total size ───────────────────────────
+  {
+    const { count: docCount } = await admin
+      .schema("dground")
+      .from("room_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("room_id", roomId);
+    if ((docCount ?? 0) >= room.quota_docs) {
+      return json(
+        { error: `문서 수 한도(${room.quota_docs}개)에 도달했습니다.` },
+        400,
+      );
+    }
+
+    const { data: roomDocs } = await admin
+      .schema("dground")
+      .from("room_documents")
+      .select("shared_documents(byte_size)")
+      .eq("room_id", roomId);
+    const usedBytes = (roomDocs ?? []).reduce((sum, rd) => {
+      const sd = Array.isArray(rd.shared_documents)
+        ? rd.shared_documents[0]
+        : rd.shared_documents;
+      return sum + ((sd?.byte_size as number) ?? 0);
+    }, 0);
+    if (usedBytes + bytes.byteLength > room.quota_bytes) {
+      const limitMb = Math.round(room.quota_bytes / 1024 / 1024);
+      return json(
+        { error: `용량 한도(${limitMb}MB)를 초과합니다.` },
+        400,
+      );
+    }
+  }
 
   // ── Dedup: has this exact content been indexed before? ───────────
   const { data: existing } = await admin
