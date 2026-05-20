@@ -346,6 +346,55 @@ export default async function AdminPage({
               </div>
             </div>
 
+            <div className="border-t border-black/10 pt-5">
+              <p className="oma-label text-black/40">쿼터</p>
+              <div className="mt-3 grid gap-5 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <label className="oma-label block text-black/60">
+                    문서 수 (≤500)
+                  </label>
+                  <input
+                    name="quota_docs"
+                    type="number"
+                    min={1}
+                    max={500}
+                    defaultValue={room.quota_docs}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="oma-label block text-black/60">
+                    용량 MB (≤2048)
+                  </label>
+                  <input
+                    name="quota_mb"
+                    type="number"
+                    min={10}
+                    max={2048}
+                    defaultValue={Math.round(room.quota_bytes / 1024 / 1024)}
+                    className={inputClass}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="oma-label block text-black/60">
+                    일일 토큰 (≤5M)
+                  </label>
+                  <input
+                    name="quota_daily_tokens"
+                    type="number"
+                    min={10000}
+                    max={5000000}
+                    step={10000}
+                    defaultValue={room.quota_daily_tokens}
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 font-mono text-xs text-black/35">
+                한도 강제는 W6에서 적용 — 현재는 설정만 저장됩니다.
+              </p>
+            </div>
+
             <button
               type="submit"
               className="group inline-flex h-11 items-center gap-2 border border-black bg-black px-5 text-sm font-bold text-white transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:oma-shadow-md"

@@ -6,6 +6,7 @@ import DocumentUpload from "@/components/DocumentUpload";
 import RoomChatTabs from "@/components/RoomChatTabs";
 import { type ChatMessage } from "@/components/RoomChat";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { detachDocument } from "./actions";
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -214,6 +215,22 @@ export default async function RoomPage({
                     >
                       {STATUS_LABEL[d.status] ?? d.status}
                     </span>
+                    {isOwner && (
+                      <form action={detachDocument}>
+                        <input type="hidden" name="room_id" value={room.id} />
+                        <input
+                          type="hidden"
+                          name="room_document_id"
+                          value={d.id}
+                        />
+                        <button
+                          type="submit"
+                          className="oma-label text-black/30 transition-colors hover:text-[var(--color-accent)]"
+                        >
+                          제거
+                        </button>
+                      </form>
+                    )}
                   </span>
                 </li>
               ))}

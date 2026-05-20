@@ -49,6 +49,23 @@ export async function updateRoomSettings(formData: FormData) {
     Math.max(0, Number(formData.get("temperature")) || 0.2),
   );
 
+  // Quotas — clamped to the PRD §3.8 system hard caps.
+  const quotaDocs = Math.min(
+    500,
+    Math.max(1, Math.round(Number(formData.get("quota_docs")) || 100)),
+  );
+  const quotaMb = Math.min(
+    2048,
+    Math.max(10, Math.round(Number(formData.get("quota_mb")) || 500)),
+  );
+  const quotaDailyTokens = Math.min(
+    5_000_000,
+    Math.max(
+      10_000,
+      Math.round(Number(formData.get("quota_daily_tokens")) || 500_000),
+    ),
+  );
+
   const admin = createSupabaseAdminClient();
   const { error } = await admin
     .schema("dground")
@@ -63,6 +80,9 @@ export async function updateRoomSettings(formData: FormData) {
         : "internal",
       top_k: topK,
       temperature,
+      quota_docs: quotaDocs,
+      quota_bytes: quotaMb * 1024 * 1024,
+      quota_daily_tokens: quotaDailyTokens,
       updated_at: new Date().toISOString(),
     })
     .eq("id", roomId);
