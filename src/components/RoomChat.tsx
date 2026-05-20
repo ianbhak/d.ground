@@ -95,10 +95,8 @@ export default function RoomChat({
                 {isUser ? "나" : "d.ground"}
               </p>
               <div
-                className={`max-w-[85%] border px-3.5 py-2.5 text-sm leading-relaxed ${
-                  isUser
-                    ? "border-black bg-black text-white"
-                    : "border-l-2 border-l-[var(--color-accent)] border-black bg-white"
+                className={`max-w-[85%] border border-black bg-white px-3.5 py-2.5 text-sm leading-relaxed ${
+                  isUser ? "" : "border-l-2 border-l-[var(--color-accent)]"
                 }`}
               >
                 <p className="whitespace-pre-wrap">{m.content}</p>
