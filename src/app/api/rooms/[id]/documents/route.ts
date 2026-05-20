@@ -59,7 +59,18 @@ export async function POST(
   if (!isAdmin) return json({ error: "forbidden" }, 403);
 
   // ── Read file ────────────────────────────────────────────────────
-  const form = await req.formData();
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return json(
+      {
+        error:
+          "업로드 본문을 읽지 못했습니다. 파일이 너무 크거나 전송이 끊겼을 수 있습니다.",
+      },
+      400,
+    );
+  }
   const file = form.get("file");
   if (!(file instanceof File)) return json({ error: "no file" }, 400);
   if (file.type !== "application/pdf") {

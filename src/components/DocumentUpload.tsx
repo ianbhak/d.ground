@@ -24,9 +24,12 @@ export default function DocumentUpload({ roomId }: { roomId: string }) {
         method: "POST",
         body,
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}) as { error?: string });
       if (!res.ok) {
-        setState({ kind: "error", message: data.error ?? "업로드 실패" });
+        setState({
+          kind: "error",
+          message: data.error ?? `업로드 실패 (HTTP ${res.status})`,
+        });
         return;
       }
       setState({ kind: "done", name: file.name, dedup: !!data.dedup });
