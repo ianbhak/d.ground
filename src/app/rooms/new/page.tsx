@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import Brandmark from "@/components/Brandmark";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { hashPassword } from "@/lib/password";
 
 const SENSITIVITIES = ["public", "internal", "confidential"] as const;
 
@@ -24,7 +23,6 @@ async function createRoom(formData: FormData) {
   )
     ? sensitivityRaw
     : "internal";
-  const password = String(formData.get("password") ?? "").trim();
 
   if (!name) redirect("/rooms/new?error=name_required");
 
@@ -37,7 +35,6 @@ async function createRoom(formData: FormData) {
       system_prompt: systemPrompt,
       model,
       sensitivity,
-      password_hash: password ? hashPassword(password) : null,
       owner_id: user.id,
     })
     .select("id")
@@ -159,10 +156,11 @@ export default async function NewRoomPage({
             </legend>
 
             <p className="text-xs leading-relaxed text-black/50">
-              모든 방은 <strong className="text-black/70">목록 비공개</strong>
-              입니다 — 멤버만 접근할 수 있습니다. 멤버는 (1) 관리자가 직접
-              초대하거나, (2) 아래 입장 비밀번호를 설정하면 방 링크 + 비밀번호로
-              직접 입장할 수 있습니다.
+              모든 방은 <strong className="text-black/70">비공개</strong>
+              입니다. 방을 만들면 <strong className="text-black/70">초대
+              링크</strong>가 하나 자동 생성됩니다 — 링크를 받은 사람만
+              로그인 후 입장할 수 있고, 관리자는 언제든 링크를 재발급해
+              기존 링크를 무효화할 수 있습니다.
             </p>
 
             <div className="space-y-2">
@@ -178,24 +176,6 @@ export default async function NewRoomPage({
                   confidential — 기밀 (외부 공유 금지 프롬프트 자동 주입)
                 </option>
               </select>
-            </div>
-
-            <div className="space-y-2">
-              <label className="oma-label block text-black/60">
-                입장 비밀번호 <span className="text-black/30">(선택)</span>
-              </label>
-              <input
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                className={inputClass}
-                placeholder="설정하면 링크 + 비밀번호로 입장 허용"
-              />
-              <p className="text-xs text-black/45">
-                비우면 <strong className="text-black/65">초대 전용</strong>{" "}
-                방이 됩니다. 비밀번호는 해시로 저장되며 이후 관리자 콘솔에서
-                변경할 수 있습니다.
-              </p>
             </div>
           </fieldset>
 

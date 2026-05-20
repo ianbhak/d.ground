@@ -25,7 +25,7 @@ export const rooms = dground.table("rooms", {
   model: text("model").default("claude-sonnet-4-6").notNull(),
   topK: integer("top_k").default(5).notNull(),
   temperature: real("temperature").default(0.2).notNull(),
-  passwordHash: text("password_hash"),
+  joinToken: text("join_token").notNull().unique(),
   sensitivity: text("sensitivity").default("internal").notNull(),
   quotaDocs: integer("quota_docs").default(100).notNull(),
   quotaBytes: bigint("quota_bytes", { mode: "number" })

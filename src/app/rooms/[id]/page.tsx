@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Brandmark from "@/components/Brandmark";
+import InviteLinkCard from "@/components/InviteLinkCard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export default async function RoomPage({
@@ -11,6 +12,10 @@ export default async function RoomPage({
   const { id } = await params;
   const supabase = await createSupabaseServerClient();
 
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const { data: room } = await supabase
     .schema("dground")
     .from("rooms")
@@ -20,6 +25,8 @@ export default async function RoomPage({
     .single();
 
   if (!room) notFound();
+
+  const isOwner = user?.id === room.owner_id;
 
   return (
     <div className="min-h-screen">
@@ -46,12 +53,17 @@ export default async function RoomPage({
           <span className="oma-label border border-black/15 px-2.5 py-1 text-black/50">
             {room.sensitivity}
           </span>
-          <span className="oma-label border border-black/15 px-2.5 py-1 text-black/50">
-            {room.password_hash ? "비밀번호 입장" : "초대 전용"}
-          </span>
         </div>
 
-        <div className="mt-10 grid gap-px border border-black bg-black sm:grid-cols-3">
+        <div className="mt-8">
+          <InviteLinkCard
+            roomId={room.id}
+            joinToken={room.join_token}
+            isOwner={isOwner}
+          />
+        </div>
+
+        <div className="mt-8 grid gap-px border border-black bg-black sm:grid-cols-3">
           {[
             { label: "문서", value: "0", hint: "W2 — 업로드 예정" },
             { label: "멤버", value: "1", hint: "방장 (나)" },

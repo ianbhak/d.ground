@@ -130,6 +130,43 @@ describe("W1 — room write path (shared auth.users FK)", () => {
   });
 });
 
+describe("W1 — invite-link model (migration 0004)", () => {
+  let admin: SupabaseClient;
+  beforeAll(() => {
+    admin = serviceClient();
+  });
+
+  it("rooms.join_token column exists", async () => {
+    const { error } = await admin
+      .schema("dground")
+      .from("rooms")
+      .select("join_token")
+      .limit(1);
+
+    if (error) {
+      throw new Error(
+        `join_token not found — run migration 0004_invite_link_model.sql. ` +
+          `(${error.code}: ${error.message})`,
+      );
+    }
+    expect(error).toBeNull();
+  });
+
+  it("join_room_by_token RPC is registered", async () => {
+    // Calling with a bogus token returns null (not a "function missing" error).
+    const { error } = await admin
+      .schema("dground")
+      .rpc("join_room_by_token", { p_token: "does-not-exist" });
+
+    if (error?.code === "PGRST202") {
+      throw new Error(
+        "join_room_by_token RPC missing — run migration 0004.",
+      );
+    }
+    expect(error?.code).not.toBe("PGRST202");
+  });
+});
+
 describe("W1 — RLS blocks anonymous access", () => {
   it("anon client reads zero rooms", async () => {
     const anon = createClient(SUPABASE_URL, ANON_KEY, {

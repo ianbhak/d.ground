@@ -30,7 +30,7 @@
 ## 1. 개요
 
 SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문서 등 도메인 문서를 기반으로 한 **멀티테넌트 RAG 챗봇 플랫폼**.
-각 어드민/운영진이 **자신만의 독립된 RAG 챗봇(이하 "Room")**을 개설하고, 초대 또는 비밀번호로 멤버를 받아 운영할 수 있다.
+각 어드민/운영진이 **자신만의 독립된 RAG 챗봇(이하 "Room")**을 개설하고, 초대 링크로 멤버를 받아 운영할 수 있다.
 
 ### 핵심 가치
 - 어드민이 코드 없이 자기 문서로 RAG 챗봇을 즉시 운영
@@ -52,7 +52,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 | 역할 | 권한 |
 |---|---|
 | **Super Admin (운영진)** | 전체 방 조회/생성/삭제, 모든 유저 관리, 어드민 권한 부여, 시스템 한도 설정 |
-| **Room Admin (어드민)** | 자신이 만든/배정된 방 운영 — 문서 업로드, 시스템 프롬프트/모델 설정, 멤버 초대/삭제, 비밀번호 설정, 방 한도 조정 (시스템 hard cap 이내) |
+| **Room Admin (어드민)** | 자신이 만든/배정된 방 운영 — 문서 업로드, 시스템 프롬프트/모델 설정, 멤버 삭제, 초대 링크 재발급, 방 한도 조정 (시스템 hard cap 이내) |
 | **Member (일반 유저)** | 자신이 속한 방 목록 확인, 챗봇과 대화 (1:1/공용 탭 전환), 자신의 1:1 대화 기록 열람 |
 | **Guest (비로그인)** | 로그인 페이지만 접근 |
 
@@ -72,13 +72,16 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 
 **개설**
 - Room Admin 이상이 방 개설 가능
-- 입력: 방 이름, 설명, (선택) 비밀번호, 시스템 프롬프트, 모델 (기본 Sonnet), 임베딩 모델 (시스템 디폴트)
+- 입력: 방 이름, 설명, 시스템 프롬프트, 모델 (기본 Sonnet), 민감도, 임베딩 모델 (시스템 디폴트)
 
-**접근 제어 (방마다 설정)**
-- **초대형**: Room Admin이 이메일로 멤버 추가 → 해당 유저의 "내 방 목록"에 노출
-- **비밀번호형**: 방 코드(URL) + 비밀번호 → 자동 멤버 등록
-- **혼합형**: 비밀번호 + 초대 둘 다 허용
-- 방은 기본 **목록 비공개**
+**접근 제어 — 단일 초대 링크 모델**
+- 방은 항상 **비공개** (목록 비노출)
+- 방 개설 시 추측 불가능한 토큰이 박힌 **초대 링크 1개**가 자동 생성됨
+  (`/join/<token>`, 128-bit hex)
+- 링크를 받은 사람이 로그인 후 열면 → 멤버로 자동 등록
+- Room Admin이 **링크 재발급**으로 기존 링크 무효화 (입장 완료 멤버는 유지)
+- 비밀번호·초대코드·이메일 초대 등 복수 경로는 인지부하 때문에 폐기 —
+  공유·관리 대상은 링크 하나뿐 (Notion/Google Docs "링크가 있는 사람" 모델)
 
 **문서 관리 (Room Admin)**
 - PDF, DOCX, TXT, MD 업로드 (v1은 PDF 우선)
@@ -115,8 +118,8 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 ### 3.4 어드민 콘솔
 
 **Room Admin 콘솔 (자기 방 한정)**
-- 멤버 목록 / 추가 / 삭제 / 강퇴
-- 비밀번호 변경 / 비활성화
+- 멤버 목록 / 삭제 / 강퇴
+- 초대 링크 확인 / 재발급
 - 문서 업로드 / detach / 재인덱싱 — dedup 표시 ("이 문서는 N개 방에서 공유 중")
 - 시스템 프롬프트 / 모델 / top-k / temperature
 - **사용량 대시보드**: 메시지 수, 입출력 토큰, 추정 비용 (USD/KRW), 모델별 분해
@@ -234,21 +237,16 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 
 ## 4. 주요 유저 플로우
 
-### 4.1 어드민이 방 만들고 멤버 초대
-1. Google 로그인 → "방 만들기" → 이름/프롬프트/모델 입력
-2. 문서 업로드 → 해시 검사 → dedup 표시 또는 신규 인덱싱
-3. 멤버 탭 → 이메일 입력 → 초대 (이메일 알림)
-4. (선택) 비밀번호 설정 후 공유 링크 복사
+### 4.1 어드민이 방 만들고 링크 공유
+1. Google 로그인 → "방 만들기" → 이름/프롬프트/모델/민감도 입력
+2. 방 생성 직후 초대 링크 자동 발급 → 복사
+3. 문서 업로드 → 해시 검사 → dedup 표시 또는 신규 인덱싱
+4. (필요 시) 링크 재발급으로 기존 링크 무효화
 
-### 4.2 일반 유저가 비밀번호로 입장
-1. Google 로그인 → 공유받은 링크 클릭
-2. 비밀번호 입력 → 검증 통과 시 멤버 자동 등록
-3. "공용/내 채팅" 탭 선택 후 대화 시작
-
-### 4.3 일반 유저가 초대로 입장
-1. (비로그인 상태에서도 초대 가능) — 이메일로 초대 알림
-2. Google 로그인 시 자동으로 "내 방 목록"에 노출
-3. 클릭 → 즉시 입장
+### 4.2 일반 유저가 링크로 입장
+1. 공유받은 초대 링크(`/join/<token>`) 클릭
+2. 미로그인 시 Google 로그인 → 로그인 후 자동으로 입장 처리
+3. 멤버로 자동 등록 → 방으로 이동, "공용/내 채팅" 탭에서 대화 시작
 
 ### 4.4 어드민이 비용 확인 후 모델 변경
 1. 사용량 대시보드에서 방별 누적 비용 확인 (모델별 분해)
@@ -262,7 +260,7 @@ SCI급 학술논문, 기술 명세서·API 레퍼런스·디자인 시스템 문
 |---|---|
 | 응답 지연 | 첫 토큰 < 2초, 일반 대화 스트리밍 |
 | 동시 사용 | v1 동시 접속 50명 가정 |
-| 보안 | 비밀번호 해싱 (argon2), 방 ACL 서버사이드 강제, RAG 쿼리 헬퍼가 room_id 필터 누락 시 throw |
+| 보안 | 초대 토큰 128-bit 난수, 방 ACL 서버사이드 강제(RLS), RAG 쿼리 헬퍼가 room_id 필터 누락 시 throw |
 | 데이터 격리 | SharedDocument 도입에도 불구하고 방 간 검색 누출 0건 — 단위 테스트로 강제 |
 | 비용 통제 | 유저별/방별 일일 토큰 한도, 한도 초과 시 차단 |
 | 로깅 | 모든 챗 메시지/검색 쿼리/관리 액션 감사 로그, 비용 텔레메트리 |
@@ -317,14 +315,14 @@ User
 
 Room
   id, name, description, owner_id (→User),
-  system_prompt, model, top_k, temperature,
-  password_hash (nullable),
+  system_prompt, model, top_k, temperature, sensitivity,
+  join_token (unique),         -- 초대 링크 토큰, 재발급 가능
   quota_docs, quota_bytes, quota_daily_tokens,
   created_at
 
 Membership
   id, room_id, user_id, role (admin | member),
-  joined_at, joined_via (invite | password)
+  joined_at, joined_via (owner | invite)   -- invite = 초대 링크 입장
 
 SharedDocument                  -- 시스템 전역 dedup
   id, content_hash (unique, sha256),
@@ -357,9 +355,7 @@ Message
   model, tokens_in, tokens_out, cache_read_tokens, cache_write_tokens,
   created_at
 
-Invite
-  id, room_id, email, invited_by, token,
-  expires_at, accepted_at
+-- (Invite 테이블 폐기 — 방 단위 join_token 으로 대체)
 
 UsageDaily                      -- 비용 집계 (매일 1행/방/모델)
   id, room_id, date, model,
@@ -395,7 +391,7 @@ LIMIT $top_k;
 
 ### v1 포함
 - Google 로그인
-- 방 생성/삭제, 비밀번호 + 초대 ACL
+- 방 생성/삭제, 초대 링크 입장 + RLS 기반 ACL
 - PDF 업로드 → SharedDocument dedup → pgvector 인덱싱
 - 듀얼 채팅 모드 (공용/1:1 탭)
 - 출처 표시 (문서명 + 페이지)
@@ -442,7 +438,7 @@ LIMIT $top_k;
 | W1 | Next.js 스캐폴딩, Supabase Auth (`@supabase/ssr`) + Google, profiles 연동, Room 스키마/CRUD UI |
 | W2 | PDF 업로드 + SHA256 dedup + 청킹 + voyage-3-lite 임베딩 + pgvector |
 | W3 | RAG 쿼리 파이프라인 + 채팅 UI (1:1 스트리밍) + 출처 표시 |
-| W4 | 공용 스레드 (Supabase Realtime), Membership ACL, 비밀번호/초대 플로우 |
+| W4 | 공용 스레드 (Supabase Realtime), Membership ACL, 멤버 관리 콘솔 |
 | W5 | Room Admin 콘솔 (멤버/문서/모델/쿼터/비용 대시보드) |
 | W6 | Super Admin 콘솔, 감사 로그, 한도 강제, 한국어 UI 다듬기 |
 | W7 | Supabase **Pro 업그레이드** (PITR + 8GB storage), 첫 방(샘플 도메인 문서 5종 PDF) 시드, QA, `dground.dconnect.kr` 배포 |
@@ -453,7 +449,7 @@ LIMIT $top_k;
 
 1. **임베딩 한국어 벤치**: voyage-3-lite vs voyage-3 — 첫 방 PDF로 실측 후 결정.
 2. **prompt caching 전략**: 시스템 프롬프트만 캐시 vs 자주 쓰이는 청크까지 캐시 — 트래픽 보고 결정.
-3. **invite 토큰 만료**: 7일/30일/무기한 — 디폴트 7일 + 어드민 조정 가능?
+3. **초대 링크 보안**: 토큰은 시간 만료 없이 재발급으로만 무효화 — 유출 위험이 큰 방은 confidential 등급 + 주기적 재발급 안내로 충분한지 검토.
 4. **Anthropic zero-retention**: 활성화 조건 / 비용 / 신청 절차 확인 필요.
 5. **방 삭제 grace period**: 30일이 적정한지 — 법인 사용 사례에 따라 조정 가능.
 6. **PII 마스킹 false positive**: 정규식 오검출 (사업자번호 형식과 다른 숫자열 등) — 시드 PDF로 정확도 측정 후 패턴 튜닝.
