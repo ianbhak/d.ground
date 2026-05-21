@@ -19,6 +19,8 @@ export interface ChatMessage {
 
 export type ChatMode = "private" | "shared";
 
+const MAX_SOURCES = 3;
+
 function dedupeSources(sources?: Source[]): string[] {
   if (!sources) return [];
   const seen = new Set<string>();
@@ -254,11 +256,18 @@ export default function RoomChat({
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 )}
                 {m.role === "assistant" &&
-                  dedupeSources(m.sources).length > 0 && (
-                    <p className="mt-2 font-mono text-xs text-black/40">
-                      출처: {dedupeSources(m.sources).join(" · ")}
-                    </p>
-                  )}
+                  (() => {
+                    const all = dedupeSources(m.sources);
+                    if (all.length === 0) return null;
+                    const shown = all.slice(0, MAX_SOURCES);
+                    const rest = all.length - shown.length;
+                    return (
+                      <p className="mt-2 font-mono text-xs text-black/40">
+                        출처: {shown.join(" · ")}
+                        {rest > 0 && ` 외 ${rest}건`}
+                      </p>
+                    );
+                  })()}
               </div>
             </div>
           );
