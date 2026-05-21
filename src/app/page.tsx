@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isSuperAdmin } from "@/lib/super-admin";
-import { restoreRoom } from "./actions";
 import Brandmark from "@/components/Brandmark";
+import DeletedRoomsPanel from "@/components/DeletedRoomsPanel";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
 import SignOutButton from "@/components/SignOutButton";
 
@@ -207,47 +207,7 @@ export default async function HomePage() {
               </Link>
             )}
 
-            {deletedRooms.length > 0 && (
-              <div className="mt-12">
-                <p className="oma-label text-black/40">삭제 예정</p>
-                <ul className="mt-3 divide-y border-y border-black/10">
-                  {deletedRooms.map((r) => {
-                    const daysLeft = Math.max(
-                      0,
-                      30 -
-                        Math.floor(
-                          (Date.now() - new Date(r.deleted_at).getTime()) /
-                            86400000,
-                        ),
-                    );
-                    return (
-                      <li
-                        key={r.id}
-                        className="flex items-center justify-between py-3"
-                      >
-                        <div className="min-w-0">
-                          <span className="text-sm text-black/55 line-through">
-                            {r.name}
-                          </span>
-                          <p className="mt-0.5 font-mono text-xs text-black/35">
-                            {daysLeft}일 후 영구 삭제
-                          </p>
-                        </div>
-                        <form action={restoreRoom}>
-                          <input type="hidden" name="room_id" value={r.id} />
-                          <button
-                            type="submit"
-                            className="oma-label text-black/40 transition-colors hover:text-[var(--color-accent)]"
-                          >
-                            복구
-                          </button>
-                        </form>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
+            <DeletedRoomsPanel rooms={deletedRooms} />
           </div>
         )}
       </section>
