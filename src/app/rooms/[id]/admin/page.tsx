@@ -59,6 +59,19 @@ export default async function AdminPage({
     .eq("room_id", room.id)
     .order("joined_at", { ascending: true });
 
+  // Resolve member identities (email + display name) from auth.users.
+  const { data: userList } = await admin.auth.admin.listUsers({
+    perPage: 1000,
+  });
+  const emailById = new Map<string, string>();
+  const metaNameById = new Map<string, string>();
+  for (const u of userList?.users ?? []) {
+    if (u.email) emailById.set(u.id, u.email);
+    const meta = u.user_metadata ?? {};
+    const n = (meta.full_name as string) || (meta.name as string);
+    if (n) metaNameById.set(u.id, n);
+  }
+
   const { data: threads } = await admin
     .schema("dground")
     .from("threads")
@@ -212,9 +225,12 @@ export default async function AdminPage({
           <ul className="mt-4 divide-y border-y border-black/10">
             {(members ?? []).map((m) => {
               const isOwner = m.user_id === room.owner_id;
-              const name = isOwner
-                ? (nameMap.get(m.user_id) ?? "방장")
-                : (nameMap.get(m.user_id) ?? "멤버");
+              const email = emailById.get(m.user_id);
+              const name =
+                metaNameById.get(m.user_id) ??
+                nameMap.get(m.user_id) ??
+                email ??
+                (isOwner ? "방장" : "멤버");
               return (
                 <li
                   key={m.user_id}
@@ -225,6 +241,11 @@ export default async function AdminPage({
                     <span className="ml-2 oma-label text-black/35">
                       {isOwner ? "방장" : m.role}
                     </span>
+                    {email && email !== name && (
+                      <p className="mt-0.5 truncate font-mono text-xs text-black/45">
+                        {email}
+                      </p>
+                    )}
                     <p className="mt-0.5 font-mono text-xs text-black/35">
                       {fmtDate(m.joined_at)} · {m.joined_via}
                     </p>
