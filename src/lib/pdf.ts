@@ -29,17 +29,24 @@ function splitByPageMarker(markdown: string): string[] {
   return pages.length > 0 ? pages : [markdown.trim()];
 }
 
+// Gemini's inline-data request cap is ~20 MB; base64 inflates the
+// payload by a third, so only PDFs comfortably under that go through
+// vision extraction. Larger files fall back to plain text (Phase 2
+// will route them through the Gemini Files API instead).
+const VISION_INLINE_MAX_BYTES = 12 * 1024 * 1024;
+
 /**
  * Vision extraction — sends the PDF straight to Gemini, which reads
  * text, tables, figures, charts, and scanned content, and returns
  * structured Markdown. Falls back to plain text extraction if the
- * Gemini call is unavailable or fails.
+ * Gemini call is unavailable, fails, or the file is too large to send
+ * inline.
  *
  * Server-only.
  */
 export async function extractPdfContent(bytes: Uint8Array): Promise<string[]> {
   const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey) {
+  if (apiKey && bytes.byteLength <= VISION_INLINE_MAX_BYTES) {
     try {
       const base64 = Buffer.from(bytes).toString("base64");
       const res = await fetchWithRetry(

@@ -4,5 +4,11 @@
       "path": "/api/cron/purge",
       "schedule": "0 3 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "src/app/api/rooms/[id]/documents/route.ts": {
+      "memory": 3009,
+      "maxDuration": 300
+    }
+  }
 }

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { extractPdfContent } from "@/lib/pdf";
@@ -7,21 +6,23 @@ import { embedTexts } from "@/lib/embedding";
 import { logAudit } from "@/lib/audit";
 
 const BUCKET = "dground-docs";
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB per file
+
+// Indexing a large PDF (extract + embed) runs synchronously here, so
+// the function needs a generous ceiling. Phase 2 moves this to a
+// background job; until then, very large scans may still time out.
+export const maxDuration = 300;
 
 function json(body: unknown, status = 200) {
   return Response.json(body, { status });
 }
 
 /**
- * Upload a PDF to a room and index it.
+ * Register and index a PDF that the browser already uploaded straight
+ * to Storage via a signed URL (see ./upload-url).
  *
- * Pipeline: auth (room admin) → SHA256 → SharedDocument dedup →
- * (new) Storage upload + text extract + chunk + embed + store chunks →
- * RoomDocument mapping.
- *
- * Heavy work (extract/embed) runs synchronously — fine for dev and
- * modest PDFs; W2.5 can move it to a background job.
+ * Body: { hash, filename }. Pipeline: auth (room admin) →
+ * SharedDocument dedup → download from Storage → extract + chunk +
+ * embed + store chunks → RoomDocument mapping.
  */
 export async function POST(
   req: Request,
@@ -39,7 +40,7 @@ export async function POST(
   const { data: room } = await supabase
     .schema("dground")
     .from("rooms")
-    .select("id, owner_id, quota_docs, quota_bytes")
+    .select("id, owner_id, quota_docs")
     .eq("id", roomId)
     .is("deleted_at", null)
     .single();
@@ -58,66 +59,18 @@ export async function POST(
   }
   if (!isAdmin) return json({ error: "forbidden" }, 403);
 
-  // ── Read file ────────────────────────────────────────────────────
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return json(
-      {
-        error:
-          "업로드 본문을 읽지 못했습니다. 파일이 너무 크거나 전송이 끊겼을 수 있습니다.",
-      },
-      400,
-    );
+  // ── Input ────────────────────────────────────────────────────────
+  const body = (await req.json().catch(() => null)) as {
+    hash?: string;
+    filename?: string;
+  } | null;
+  const hash = body?.hash ?? "";
+  const filename = (body?.filename ?? "").trim();
+  if (!/^[a-f0-9]{64}$/.test(hash) || !filename) {
+    return json({ error: "bad request" }, 400);
   }
-  const file = form.get("file");
-  if (!(file instanceof File)) return json({ error: "no file" }, 400);
-  if (file.type !== "application/pdf") {
-    return json({ error: "PDF 파일만 업로드할 수 있습니다." }, 400);
-  }
-  if (file.size > MAX_BYTES) {
-    return json({ error: "파일이 25MB를 초과합니다." }, 400);
-  }
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const hash = createHash("sha256").update(bytes).digest("hex");
 
   const admin = createSupabaseAdminClient();
-
-  // ── Quota: document count + total size ───────────────────────────
-  {
-    const { count: docCount } = await admin
-      .schema("dground")
-      .from("room_documents")
-      .select("id", { count: "exact", head: true })
-      .eq("room_id", roomId);
-    if ((docCount ?? 0) >= room.quota_docs) {
-      return json(
-        { error: `문서 수 한도(${room.quota_docs}개)에 도달했습니다.` },
-        400,
-      );
-    }
-
-    const { data: roomDocs } = await admin
-      .schema("dground")
-      .from("room_documents")
-      .select("shared_documents(byte_size)")
-      .eq("room_id", roomId);
-    const usedBytes = (roomDocs ?? []).reduce((sum, rd) => {
-      const sd = Array.isArray(rd.shared_documents)
-        ? rd.shared_documents[0]
-        : rd.shared_documents;
-      return sum + ((sd?.byte_size as number) ?? 0);
-    }, 0);
-    if (usedBytes + bytes.byteLength > room.quota_bytes) {
-      const limitMb = Math.round(room.quota_bytes / 1024 / 1024);
-      return json(
-        { error: `용량 한도(${limitMb}MB)를 초과합니다.` },
-        400,
-      );
-    }
-  }
 
   // ── Dedup: has this exact content been indexed before? ───────────
   const { data: existing } = await admin
@@ -134,14 +87,32 @@ export async function POST(
     sharedDocId = existing.id;
     dedup = true;
   } else {
-    // New content (or a prior failed attempt) — (re)index it.
+    // Document count quota — checked again here in case the client
+    // skipped the upload-url step.
+    const { count: docCount } = await admin
+      .schema("dground")
+      .from("room_documents")
+      .select("id", { count: "exact", head: true })
+      .eq("room_id", roomId);
+    if ((docCount ?? 0) >= room.quota_docs) {
+      return json(
+        { error: `문서 수 한도(${room.quota_docs}개)에 도달했습니다.` },
+        400,
+      );
+    }
+
+    // Pull the browser-uploaded PDF back out of Storage.
     const storagePath = `${hash}.pdf`;
-    await admin.storage
+    const { data: blob, error: dlErr } = await admin.storage
       .from(BUCKET)
-      .upload(storagePath, bytes, {
-        contentType: "application/pdf",
-        upsert: true,
-      });
+      .download(storagePath);
+    if (dlErr || !blob) {
+      return json(
+        { error: "업로드된 파일을 찾을 수 없습니다. 다시 시도해 주세요." },
+        400,
+      );
+    }
+    const bytes = new Uint8Array(await blob.arrayBuffer());
 
     if (existing) {
       sharedDocId = existing.id;
@@ -151,7 +122,7 @@ export async function POST(
         .from("shared_documents")
         .insert({
           content_hash: hash,
-          original_filename: file.name,
+          original_filename: filename,
           mime_type: "application/pdf",
           byte_size: bytes.byteLength,
           storage_path: storagePath,
@@ -204,10 +175,7 @@ export async function POST(
         .from("shared_documents")
         .update({ status: "failed" })
         .eq("id", sharedDocId);
-      return json(
-        { error: `색인 실패: ${(e as Error).message}` },
-        500,
-      );
+      return json({ error: `색인 실패: ${(e as Error).message}` }, 500);
     }
   }
 
@@ -218,7 +186,7 @@ export async function POST(
     .insert({
       room_id: roomId,
       shared_doc_id: sharedDocId,
-      display_filename: file.name,
+      display_filename: filename,
       attached_by: user.id,
     });
   if (rdErr && !/duplicate|unique/i.test(rdErr.message)) {
@@ -230,7 +198,7 @@ export async function POST(
     action: "document.upload",
     targetType: "room",
     targetId: roomId,
-    metadata: { filename: file.name, dedup },
+    metadata: { filename, dedup },
   });
 
   return json({ ok: true, dedup });
