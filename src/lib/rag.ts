@@ -5,6 +5,7 @@ export interface RetrievedChunk {
   content: string;
   page: number | null;
   filename: string;
+  content_hash: string;
   similarity: number;
 }
 

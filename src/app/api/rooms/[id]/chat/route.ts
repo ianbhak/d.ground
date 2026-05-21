@@ -170,6 +170,10 @@ export async function POST(
     filename: c.filename,
     page: c.page,
     similarity: c.similarity,
+    thumb:
+      c.page != null && c.content_hash
+        ? `/api/figures/${c.content_hash}/p${c.page}.png`
+        : null,
   }));
 
   // ── Stream the answer ────────────────────────────────────────────

@@ -104,7 +104,11 @@ export default async function RoomPage({
         role: m.role as "user" | "assistant",
         content: m.content,
         sources: Array.isArray(m.sources)
-          ? (m.sources as { filename: string; page: number | null }[])
+          ? (m.sources as {
+              filename: string;
+              page: number | null;
+              thumb?: string | null;
+            }[])
           : [],
         mine: m.role === "assistant" ? false : m.sender_id === user.id,
         senderName: m.sender_name ?? undefined,

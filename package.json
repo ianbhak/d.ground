@@ -13,6 +13,7 @@
     "db:types": "supabase gen types typescript --project-id yvasxiixcnukyzxlnqvb --schema public,dground > src/lib/database.types.ts"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.1",
     "class-variance-authority": "^0.7.1",

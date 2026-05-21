@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 interface Source {
   filename: string;
   page: number | null;
+  thumb?: string | null;
 }
 
 export interface ChatMessage {
@@ -28,6 +29,18 @@ function dedupeSources(sources?: Source[]): string[] {
     seen.add(s.page ? `${s.filename} p.${s.page}` : s.filename);
   }
   return [...seen];
+}
+
+function dedupeThumbs(
+  sources?: Source[],
+): { thumb: string; label: string }[] {
+  if (!sources) return [];
+  const seen = new Map<string, string>();
+  for (const s of sources) {
+    if (!s.thumb || seen.has(s.thumb)) continue;
+    seen.set(s.thumb, s.page ? `p.${s.page}` : s.filename);
+  }
+  return [...seen].map(([thumb, label]) => ({ thumb, label }));
 }
 
 export default function RoomChat({
@@ -266,6 +279,38 @@ export default function RoomChat({
                         출처: {shown.join(" · ")}
                         {rest > 0 && ` 외 ${rest}건`}
                       </p>
+                    );
+                  })()}
+                {m.role === "assistant" &&
+                  (() => {
+                    const thumbs = dedupeThumbs(m.sources).slice(
+                      0,
+                      MAX_SOURCES,
+                    );
+                    if (thumbs.length === 0) return null;
+                    return (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {thumbs.map((t) => (
+                          <a
+                            key={t.thumb}
+                            href={t.thumb}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="block border border-black/15 transition-colors hover:border-black"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={t.thumb}
+                              alt={`출처 페이지 ${t.label}`}
+                              loading="lazy"
+                              className="h-28 w-auto object-contain"
+                            />
+                            <span className="block border-t border-black/10 px-1.5 py-0.5 text-center font-mono text-[10px] text-black/40">
+                              {t.label}
+                            </span>
+                          </a>
+                        ))}
+                      </div>
                     );
                   })()}
               </div>
