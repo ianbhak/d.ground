@@ -109,6 +109,8 @@ export async function updateRoomSettings(formData: FormData) {
 export async function removeMember(formData: FormData) {
   const roomId = String(formData.get("room_id") ?? "");
   const memberId = String(formData.get("user_id") ?? "");
+  // When set, the removed member is also barred from rejoining.
+  const restrict = String(formData.get("restrict") ?? "") === "1";
   const actorId = await assertOwner(roomId);
 
   const admin = createSupabaseAdminClient();
@@ -131,9 +133,44 @@ export async function removeMember(formData: FormData) {
     .eq("room_id", roomId)
     .eq("user_id", memberId);
 
+  if (restrict) {
+    await admin
+      .schema("dground")
+      .from("room_restrictions")
+      .upsert(
+        { room_id: roomId, user_id: memberId, restricted_by: actorId },
+        { onConflict: "room_id,user_id" },
+      );
+  }
+
   await logAudit({
     actorId,
-    action: "member.remove",
+    action: restrict ? "member.restrict" : "member.remove",
+    targetType: "room",
+    targetId: roomId,
+    metadata: { member: memberId },
+  });
+
+  revalidatePath(`/rooms/${roomId}/admin`);
+}
+
+/** Lift an entry restriction — the user may rejoin via the link again. */
+export async function unrestrictMember(formData: FormData) {
+  const roomId = String(formData.get("room_id") ?? "");
+  const memberId = String(formData.get("user_id") ?? "");
+  const actorId = await assertOwner(roomId);
+
+  const admin = createSupabaseAdminClient();
+  await admin
+    .schema("dground")
+    .from("room_restrictions")
+    .delete()
+    .eq("room_id", roomId)
+    .eq("user_id", memberId);
+
+  await logAudit({
+    actorId,
+    action: "member.unrestrict",
     targetType: "room",
     targetId: roomId,
     metadata: { member: memberId },

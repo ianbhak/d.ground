@@ -216,7 +216,7 @@ export default async function HomePage() {
       <footer className="border-t border-black/10 px-6 py-8 sm:px-10">
         <div className="mx-auto flex max-w-5xl items-center justify-between">
           <p className="font-mono text-xs text-black/40">
-            d.ground — Ground your conversation in documents.
+            d.ground — Conversations on solid ground.
           </p>
           <p className="font-mono text-xs text-black/30">
             d.connect family · dconnect.kr

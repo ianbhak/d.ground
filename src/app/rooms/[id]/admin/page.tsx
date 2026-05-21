@@ -11,7 +11,12 @@ import {
   MODEL_RATES,
 } from "@/lib/pricing";
 import ConfirmSubmit from "@/components/ConfirmSubmit";
-import { updateRoomSettings, removeMember, softDeleteRoom } from "./actions";
+import {
+  updateRoomSettings,
+  removeMember,
+  unrestrictMember,
+  softDeleteRoom,
+} from "./actions";
 
 const inputClass =
   "w-full border border-black bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[var(--color-accent)]";
@@ -58,6 +63,13 @@ export default async function AdminPage({
     .select("user_id, role, joined_at, joined_via")
     .eq("room_id", room.id)
     .order("joined_at", { ascending: true });
+
+  const { data: restrictions } = await admin
+    .schema("dground")
+    .from("room_restrictions")
+    .select("user_id, created_at")
+    .eq("room_id", room.id)
+    .order("created_at", { ascending: true });
 
   // Resolve member identities (email + display name) from auth.users.
   const { data: userList } = await admin.auth.admin.listUsers({
@@ -251,7 +263,10 @@ export default async function AdminPage({
                     </p>
                   </div>
                   {!isOwner && (
-                    <form action={removeMember}>
+                    <form
+                      action={removeMember}
+                      className="flex shrink-0 items-center gap-3"
+                    >
                       <input type="hidden" name="room_id" value={room.id} />
                       <input
                         type="hidden"
@@ -260,9 +275,17 @@ export default async function AdminPage({
                       />
                       <button
                         type="submit"
-                        className="oma-label text-black/40 transition-colors hover:text-[var(--color-accent)]"
+                        className="oma-label text-black/40 transition-colors hover:text-black"
                       >
                         강퇴
+                      </button>
+                      <button
+                        type="submit"
+                        name="restrict"
+                        value="1"
+                        className="oma-label text-black/40 transition-colors hover:text-[var(--color-accent)]"
+                      >
+                        강퇴·입장제한
                       </button>
                     </form>
                   )}
@@ -271,6 +294,60 @@ export default async function AdminPage({
             })}
           </ul>
         </section>
+
+        {/* ── 입장 제한 ──────────────────────────────────────── */}
+        {(restrictions ?? []).length > 0 && (
+          <section className="mt-10">
+            <p className="oma-label text-black/40">Restricted</p>
+            <h2 className="mt-1 font-serif text-2xl">입장 제한</h2>
+            <p className="mt-2 text-sm text-black/55">
+              아래 사용자는 초대 링크가 있어도 이 방에 입장할 수 없습니다.
+            </p>
+
+            <ul className="mt-4 divide-y border-y border-black/10">
+              {(restrictions ?? []).map((r) => {
+                const email = emailById.get(r.user_id);
+                const name =
+                  metaNameById.get(r.user_id) ??
+                  nameMap.get(r.user_id) ??
+                  email ??
+                  r.user_id;
+                return (
+                  <li
+                    key={r.user_id}
+                    className="flex items-center justify-between py-3"
+                  >
+                    <div className="min-w-0">
+                      <span className="text-sm">{name}</span>
+                      {email && email !== name && (
+                        <p className="mt-0.5 truncate font-mono text-xs text-black/45">
+                          {email}
+                        </p>
+                      )}
+                      <p className="mt-0.5 font-mono text-xs text-black/35">
+                        {fmtDate(r.created_at)} 제한
+                      </p>
+                    </div>
+                    <form action={unrestrictMember} className="shrink-0">
+                      <input type="hidden" name="room_id" value={room.id} />
+                      <input
+                        type="hidden"
+                        name="user_id"
+                        value={r.user_id}
+                      />
+                      <button
+                        type="submit"
+                        className="oma-label text-black/40 transition-colors hover:text-black"
+                      >
+                        제한 해제
+                      </button>
+                    </form>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* ── 방 설정 ────────────────────────────────────────── */}
         <section className="mt-10">
