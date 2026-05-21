@@ -87,29 +87,25 @@ export async function extractPdfContent(bytes: Uint8Array): Promise<string[]> {
 }
 
 const THUMB_WIDTH = 480; // px — small enough for an inline citation thumbnail
-const MAX_THUMB_PAGES = 80; // bound render cost for very long PDFs
 
 /**
- * Render the first MAX_THUMB_PAGES of a PDF to small PNG thumbnails,
- * one per page. Used so answers can show a thumbnail of every cited
- * page (tables/figures included). Server-only.
+ * Render a single PDF page to a small PNG thumbnail. Returns null if
+ * the page number is out of range. Server-only.
+ *
+ * Used by /api/figures to render cited-page previews lazily — only
+ * the pages an answer actually cites are ever rasterised.
  *
  * pdf.js detaches the buffer it parses, so callers should pass a copy
  * if they still need the bytes afterwards.
  */
-export async function renderPageThumbnails(
+export async function renderPageThumbnail(
   bytes: Uint8Array,
-): Promise<{ page: number; png: Uint8Array }[]> {
-  const canvasImport = () => import("@napi-rs/canvas");
+  page: number,
+): Promise<ArrayBuffer | null> {
   const pdf = await getDocumentProxy(bytes);
-  const pageCount = Math.min(pdf.numPages, MAX_THUMB_PAGES);
-  const out: { page: number; png: Uint8Array }[] = [];
-  for (let p = 1; p <= pageCount; p++) {
-    const buf = await renderPageAsImage(pdf, p, {
-      width: THUMB_WIDTH,
-      canvasImport,
-    });
-    out.push({ page: p, png: new Uint8Array(buf) });
-  }
-  return out;
+  if (page < 1 || page > pdf.numPages) return null;
+  return renderPageAsImage(pdf, page, {
+    width: THUMB_WIDTH,
+    canvasImport: () => import("@napi-rs/canvas"),
+  });
 }

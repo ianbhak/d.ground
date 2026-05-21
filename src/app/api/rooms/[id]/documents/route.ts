@@ -1,13 +1,12 @@
 import { createHash } from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractPdfContent, renderPageThumbnails } from "@/lib/pdf";
+import { extractPdfContent } from "@/lib/pdf";
 import { chunkDocument } from "@/lib/chunking";
 import { embedTexts } from "@/lib/embedding";
 import { logAudit } from "@/lib/audit";
 
 const BUCKET = "dground-docs";
-const FIGURES_BUCKET = "dground-figures";
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB per file
 
 function json(body: unknown, status = 200) {
@@ -199,22 +198,6 @@ export async function POST(
         .from("shared_documents")
         .update({ status: "indexed", indexed_at: new Date().toISOString() })
         .eq("id", sharedDocId);
-
-      // Page thumbnails for cited-page previews. Best-effort — a
-      // rendering failure must never fail an otherwise-good index.
-      try {
-        const thumbs = await renderPageThumbnails(bytes.slice());
-        for (const t of thumbs) {
-          await admin.storage
-            .from(FIGURES_BUCKET)
-            .upload(`${hash}/p${t.page}.png`, t.png, {
-              contentType: "image/png",
-              upsert: true,
-            });
-        }
-      } catch {
-        // Thumbnails unavailable — answers just won't show previews.
-      }
     } catch (e) {
       await admin
         .schema("dground")
