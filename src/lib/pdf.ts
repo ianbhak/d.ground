@@ -14,8 +14,9 @@ export async function extractPdfPages(bytes: Uint8Array): Promise<string[]> {
 
 const VISION_PROMPT = `Extract ALL content from this PDF as clean Markdown.
 - Preserve tables as Markdown tables.
-- For figures, charts, and diagrams, write a concise description of what
-  they show, including any data points, labels, or values.
+- For figures, charts, and diagrams, output a line beginning with
+  "[FIGURE] " followed by a concise description of what they show,
+  including any data points, labels, or values.
 - OCR any text that is part of an image or a scanned page.
 - At the start of each page output a line exactly: "--- page N ---"
   where N is the page number.
@@ -93,6 +94,26 @@ export async function extractPdfContent(bytes: Uint8Array): Promise<string[]> {
   return extractPdfPages(bytes);
 }
 
+/**
+ * 1-based page numbers whose extracted Markdown contains a table or a
+ * figure. A thumbnail is only worth showing for these pages — a
+ * thumbnail of a plain-text page tells the reader nothing.
+ *
+ * Figures are detected via the "[FIGURE]" marker the vision prompt
+ * emits; tables via a Markdown table separator row. The plain-text
+ * extraction fallback has neither, so it simply yields no visual pages.
+ */
+export function detectVisualPages(pages: string[]): number[] {
+  const TABLE_SEPARATOR = /^[ \t]*\|?[ \t:|-]*-{3,}[ \t:|-]*\|[ \t:|-]*$/m;
+  const result: number[] = [];
+  pages.forEach((markdown, i) => {
+    if (markdown.includes("[FIGURE]") || TABLE_SEPARATOR.test(markdown)) {
+      result.push(i + 1);
+    }
+  });
+  return result;
+}
+
 const THUMB_WIDTH = 480; // px — small enough for an inline citation thumbnail
 
 /**
@@ -115,4 +136,32 @@ export async function renderPageThumbnail(
     width: THUMB_WIDTH,
     canvasImport: () => import("@napi-rs/canvas"),
   });
+}
+
+/**
+ * Render several PDF pages to small PNG thumbnails in a single pass —
+ * used to pre-render table/figure-page thumbnails at index time. Pages
+ * out of range are skipped. Server-only.
+ *
+ * pdf.js detaches the buffer it parses, so callers should pass a copy
+ * if they still need the bytes afterwards.
+ */
+export async function renderPageThumbnails(
+  bytes: Uint8Array,
+  pages: number[],
+): Promise<Map<number, ArrayBuffer>> {
+  const out = new Map<number, ArrayBuffer>();
+  if (pages.length === 0) return out;
+  const pdf = await getDocumentProxy(bytes);
+  for (const page of pages) {
+    if (page < 1 || page > pdf.numPages) continue;
+    out.set(
+      page,
+      await renderPageAsImage(pdf, page, {
+        width: THUMB_WIDTH,
+        canvasImport: () => import("@napi-rs/canvas"),
+      }),
+    );
+  }
+  return out;
 }

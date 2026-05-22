@@ -170,8 +170,12 @@ export async function POST(
     filename: c.filename,
     page: c.page,
     similarity: c.similarity,
+    // Only table/figure pages get a thumbnail — a thumbnail of a
+    // plain-text page tells the reader nothing.
     thumb:
-      c.page != null && c.content_hash
+      c.page != null &&
+      c.content_hash &&
+      (c.figure_pages ?? []).includes(c.page)
         ? `/api/figures/${c.content_hash}/p${c.page}.png`
         : null,
   }));

@@ -1,11 +1,16 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { extractPdfContent } from "@/lib/pdf";
+import {
+  extractPdfContent,
+  detectVisualPages,
+  renderPageThumbnails,
+} from "@/lib/pdf";
 import { chunkDocument } from "@/lib/chunking";
 import { embedTexts } from "@/lib/embedding";
 import { logAudit } from "@/lib/audit";
 
 const BUCKET = "dground-docs";
+const FIGURES_BUCKET = "dground-figures";
 
 // Indexing a large PDF (extract + embed) runs synchronously here, so
 // the function needs a generous ceiling. Phase 2 moves this to a
@@ -113,6 +118,9 @@ export async function POST(
       );
     }
     const bytes = new Uint8Array(await blob.arrayBuffer());
+    // pdf.js detaches the buffer it parses, so keep a copy for the
+    // thumbnail pre-render after extraction.
+    const pdfBytes = bytes.slice();
 
     if (existing) {
       sharedDocId = existing.id;
@@ -164,10 +172,38 @@ export async function POST(
         if (error) throw new Error(error.message);
       }
 
+      // Pre-render thumbnails for pages that carry a table or figure.
+      // Best-effort — thumbnails are cosmetic and must not fail
+      // indexing — but figure_pages is recorded regardless so the chat
+      // route knows which cited pages deserve a thumbnail.
+      const figurePages = detectVisualPages(pages);
+      if (figurePages.length > 0) {
+        try {
+          const thumbs = await renderPageThumbnails(pdfBytes, figurePages);
+          for (const [page, png] of thumbs) {
+            await admin.storage
+              .from(FIGURES_BUCKET)
+              .upload(`${hash}/p${page}.png`, png, {
+                contentType: "image/png",
+                upsert: true,
+              });
+          }
+        } catch (e) {
+          console.error(
+            "thumbnail pre-render failed:",
+            (e as Error).message,
+          );
+        }
+      }
+
       await admin
         .schema("dground")
         .from("shared_documents")
-        .update({ status: "indexed", indexed_at: new Date().toISOString() })
+        .update({
+          status: "indexed",
+          indexed_at: new Date().toISOString(),
+          figure_pages: figurePages,
+        })
         .eq("id", sharedDocId);
     } catch (e) {
       await admin

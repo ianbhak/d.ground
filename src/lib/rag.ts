@@ -6,6 +6,8 @@ export interface RetrievedChunk {
   page: number | null;
   filename: string;
   content_hash: string;
+  /** 1-based pages of this document that carry a table or figure. */
+  figure_pages: number[];
   similarity: number;
 }
 

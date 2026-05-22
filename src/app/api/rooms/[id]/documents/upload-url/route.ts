@@ -2,7 +2,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const BUCKET = "dground-docs";
-const MAX_BYTES = 200 * 1024 * 1024; // 200 MB per file
+const MAX_BYTES = 32 * 1024 * 1024; // 32 MB per file
 
 function json(body: unknown, status = 200) {
   return Response.json(body, { status });

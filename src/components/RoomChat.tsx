@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import Markdown from "./Markdown";
 
 interface Source {
   filename: string;
@@ -265,6 +266,8 @@ export default function RoomChat({
                   <p className="text-black/40">
                     문서를 검색하고 답변을 생성하는 중…
                   </p>
+                ) : m.role === "assistant" ? (
+                  <Markdown content={m.content} />
                 ) : (
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 )}

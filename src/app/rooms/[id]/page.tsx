@@ -197,50 +197,64 @@ export default async function RoomPage({
           </div>
 
           {docs.length > 0 ? (
-            <ul className="mt-4 divide-y border-y border-black/10">
-              {docs.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex items-center justify-between py-3"
-                >
-                  <span className="min-w-0 truncate pr-4 text-sm">
-                    {d.name}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-3">
-                    <span className="font-mono text-xs text-black/35">
-                      {formatBytes(d.bytes)}
+            <details className="group mt-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between border-y border-black/10 py-3 [&::-webkit-details-marker]:hidden">
+                <span className="oma-label text-black/50">
+                  업로드된 문서 {docs.length}개
+                </span>
+                <span className="font-mono text-xs text-black/40 transition-transform group-open:rotate-90">
+                  ▸
+                </span>
+              </summary>
+              <ul className="divide-y border-b border-black/10">
+                {docs.map((d) => (
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between py-3"
+                  >
+                    <span className="min-w-0 truncate pr-4 text-sm">
+                      {d.name}
                     </span>
-                    <span
-                      className={`oma-label ${
-                        d.status === "failed"
-                          ? "text-[var(--color-accent)]"
-                          : d.status === "indexed"
-                            ? "text-black/50"
-                            : "text-black/35"
-                      }`}
-                    >
-                      {STATUS_LABEL[d.status] ?? d.status}
+                    <span className="flex shrink-0 items-center gap-3">
+                      <span className="font-mono text-xs text-black/35">
+                        {formatBytes(d.bytes)}
+                      </span>
+                      <span
+                        className={`oma-label ${
+                          d.status === "failed"
+                            ? "text-[var(--color-accent)]"
+                            : d.status === "indexed"
+                              ? "text-black/50"
+                              : "text-black/35"
+                        }`}
+                      >
+                        {STATUS_LABEL[d.status] ?? d.status}
+                      </span>
+                      {isOwner && (
+                        <form action={detachDocument}>
+                          <input
+                            type="hidden"
+                            name="room_id"
+                            value={room.id}
+                          />
+                          <input
+                            type="hidden"
+                            name="room_document_id"
+                            value={d.id}
+                          />
+                          <button
+                            type="submit"
+                            className="oma-label text-black/30 transition-colors hover:text-[var(--color-accent)]"
+                          >
+                            제거
+                          </button>
+                        </form>
+                      )}
                     </span>
-                    {isOwner && (
-                      <form action={detachDocument}>
-                        <input type="hidden" name="room_id" value={room.id} />
-                        <input
-                          type="hidden"
-                          name="room_document_id"
-                          value={d.id}
-                        />
-                        <button
-                          type="submit"
-                          className="oma-label text-black/30 transition-colors hover:text-[var(--color-accent)]"
-                        >
-                          제거
-                        </button>
-                      </form>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </details>
           ) : (
             <div className="mt-4 border border-dashed border-black/30 p-12 text-center text-sm text-black/50">
               {isOwner

@@ -3,27 +3,37 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  preparePdfForUpload,
+  type PreparePhase,
+  type PreparedPart,
+} from "@/lib/pdf-prepare";
 
 type State =
   | { kind: "idle" }
-  | { kind: "preparing"; name: string }
-  | { kind: "uploading"; name: string }
-  | { kind: "indexing"; name: string }
-  | { kind: "done"; name: string; dedup: boolean }
+  | { kind: "processing"; name: string; detail: string }
+  | { kind: "uploading"; name: string; detail: string }
+  | { kind: "done"; name: string; parts: number; dedup: boolean }
   | { kind: "error"; message: string };
 
-const MAX_MB = 200;
+const MAX_MB = 32;
 const BUCKET = "dground-docs";
 
-/** SHA-256 of the file, lower-case hex — matches the server's hash. */
-async function sha256Hex(file: File): Promise<string> {
+/** SHA-256 of the blob, lower-case hex — matches the server's hash. */
+async function sha256Hex(blob: Blob): Promise<string> {
   const digest = await crypto.subtle.digest(
     "SHA-256",
-    await file.arrayBuffer(),
+    await blob.arrayBuffer(),
   );
   return [...new Uint8Array(digest)]
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function phaseLabel(phase: PreparePhase): string {
+  return phase.kind === "rendering"
+    ? `페이지 변환 중 ${phase.page}/${phase.total}`
+    : `압축본 생성 중 (${phase.part})`;
 }
 
 export default function DocumentUpload({ roomId }: { roomId: string }) {
@@ -31,106 +41,111 @@ export default function DocumentUpload({ roomId }: { roomId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<State>({ kind: "idle" });
 
-  async function upload(file: File) {
-    if (file.size > MAX_MB * 1024 * 1024) {
-      setState({
-        kind: "error",
-        message: `파일이 ${MAX_MB}MB를 초과합니다 (${(
-          file.size /
-          1024 /
-          1024
-        ).toFixed(1)}MB).`,
-      });
-      return;
+  /** Upload one prepared part: hash → signed URL → Storage → index. */
+  async function uploadPart(
+    part: PreparedPart,
+    displayName: string,
+    suffix: string,
+  ): Promise<{ dedup: boolean }> {
+    const hash = await sha256Hex(part.blob);
+
+    // Ask for a signed upload URL (or learn the content is already indexed).
+    const urlRes = await fetch(`/api/rooms/${roomId}/documents/upload-url`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hash,
+        filename: part.filename,
+        size: part.blob.size,
+      }),
+    });
+    const urlData = await urlRes
+      .json()
+      .catch(() => ({}) as Record<string, unknown>);
+    if (!urlRes.ok) {
+      throw new Error(
+        (urlData.error as string) ?? `업로드 준비 실패 (HTTP ${urlRes.status})`,
+      );
     }
 
-    try {
-      // 1. Hash the file so the server can dedup and key Storage.
-      setState({ kind: "preparing", name: file.name });
-      const hash = await sha256Hex(file);
+    // Upload straight to Storage — unless the content already exists.
+    if (!urlData.dedup) {
+      setState({ kind: "uploading", name: displayName, detail: `업로드 중${suffix}` });
+      const supabase = createSupabaseBrowserClient();
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .uploadToSignedUrl(
+          urlData.path as string,
+          urlData.token as string,
+          part.blob,
+          { contentType: "application/pdf" },
+        );
+      if (error) throw new Error(`업로드 실패: ${error.message}`);
+    }
 
-      // 2. Ask for a signed upload URL (or learn it's already indexed).
-      const urlRes = await fetch(
-        `/api/rooms/${roomId}/documents/upload-url`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            hash,
-            filename: file.name,
-            size: file.size,
-          }),
-        },
+    // Register + index the uploaded file.
+    setState({ kind: "uploading", name: displayName, detail: `색인 중${suffix}` });
+    const regRes = await fetch(`/api/rooms/${roomId}/documents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hash, filename: part.filename }),
+    });
+    const regData = await regRes
+      .json()
+      .catch(() => ({}) as Record<string, unknown>);
+    if (!regRes.ok) {
+      throw new Error(
+        (regData.error as string) ?? `색인 실패 (HTTP ${regRes.status})`,
       );
-      const urlData = await urlRes
-        .json()
-        .catch(() => ({}) as Record<string, unknown>);
-      if (!urlRes.ok) {
-        setState({
-          kind: "error",
-          message:
-            (urlData.error as string) ?? `업로드 준비 실패 (HTTP ${urlRes.status})`,
-        });
-        return;
+    }
+    return { dedup: !!regData.dedup };
+  }
+
+  async function handleFile(file: File) {
+    try {
+      // Oversized files are rasterised + split client-side so they fit
+      // the Storage limit; files within the limit pass through untouched.
+      let parts: PreparedPart[];
+      if (file.size > MAX_MB * 1024 * 1024) {
+        setState({ kind: "processing", name: file.name, detail: "분석 중…" });
+        parts = await preparePdfForUpload(file, (phase) =>
+          setState({
+            kind: "processing",
+            name: file.name,
+            detail: phaseLabel(phase),
+          }),
+        );
+      } else {
+        parts = [{ blob: file, filename: file.name }];
       }
 
-      // 3. Upload straight to Storage — unless the content already exists.
-      if (!urlData.dedup) {
-        setState({ kind: "uploading", name: file.name });
-        const supabase = createSupabaseBrowserClient();
-        const { error } = await supabase.storage
-          .from(BUCKET)
-          .uploadToSignedUrl(
-            urlData.path as string,
-            urlData.token as string,
-            file,
-            { contentType: "application/pdf" },
-          );
-        if (error) {
-          setState({ kind: "error", message: `업로드 실패: ${error.message}` });
-          return;
-        }
+      let lastDedup = false;
+      for (let i = 0; i < parts.length; i++) {
+        const suffix = parts.length > 1 ? ` (${i + 1}/${parts.length})` : "";
+        const { dedup } = await uploadPart(parts[i], file.name, suffix);
+        lastDedup = dedup;
       }
 
-      // 4. Register + index the uploaded file.
-      setState({ kind: "indexing", name: file.name });
-      const regRes = await fetch(`/api/rooms/${roomId}/documents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ hash, filename: file.name }),
+      setState({
+        kind: "done",
+        name: file.name,
+        parts: parts.length,
+        dedup: parts.length === 1 && lastDedup,
       });
-      const regData = await regRes
-        .json()
-        .catch(() => ({}) as Record<string, unknown>);
-      if (!regRes.ok) {
-        setState({
-          kind: "error",
-          message:
-            (regData.error as string) ?? `색인 실패 (HTTP ${regRes.status})`,
-        });
-        return;
-      }
-
-      setState({ kind: "done", name: file.name, dedup: !!regData.dedup });
       router.refresh();
     } catch (e) {
       setState({ kind: "error", message: (e as Error).message });
     }
   }
 
-  const busy =
-    state.kind === "preparing" ||
-    state.kind === "uploading" ||
-    state.kind === "indexing";
+  const busy = state.kind === "processing" || state.kind === "uploading";
 
   const busyLabel =
-    state.kind === "preparing"
-      ? "준비 중…"
+    state.kind === "processing"
+      ? "압축 중…"
       : state.kind === "uploading"
         ? "업로드 중…"
-        : state.kind === "indexing"
-          ? "색인 중…"
-          : "+ PDF 업로드";
+        : "+ PDF 업로드";
 
   return (
     <div>
@@ -141,7 +156,7 @@ export default function DocumentUpload({ roomId }: { roomId: string }) {
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
-          if (f) upload(f);
+          if (f) handleFile(f);
           e.target.value = "";
         }}
       />
@@ -154,29 +169,28 @@ export default function DocumentUpload({ roomId }: { roomId: string }) {
           {busyLabel}
         </button>
         <span className="font-mono text-xs text-black/35">
-          PDF · 최대 {MAX_MB}MB
+          PDF · {MAX_MB}MB 초과 시 자동 압축·분할
         </span>
       </div>
 
-      {state.kind === "preparing" && (
+      {state.kind === "processing" && (
         <p className="mt-2 font-mono text-xs text-black/45">
-          {state.name} — 파일 확인 중
+          {state.name} — {state.detail}
         </p>
       )}
       {state.kind === "uploading" && (
         <p className="mt-2 font-mono text-xs text-black/45">
-          {state.name} — 업로드 중 (대용량 파일은 수 분 소요될 수 있습니다)
-        </p>
-      )}
-      {state.kind === "indexing" && (
-        <p className="mt-2 font-mono text-xs text-black/45">
-          {state.name} — 추출·임베딩 중 (문서 크기에 따라 수십 초~수 분 소요)
+          {state.name} — {state.detail}
         </p>
       )}
       {state.kind === "done" && (
         <p className="mt-2 font-mono text-xs text-black/55">
           ✓ {state.name}
-          {state.dedup ? " — 기존 색인 재사용 (dedup)" : " — 색인 완료"}
+          {state.parts > 1
+            ? ` — ${state.parts}개 파일로 분할 업로드 완료`
+            : state.dedup
+              ? " — 기존 색인 재사용 (dedup)"
+              : " — 색인 완료"}
         </p>
       )}
       {state.kind === "error" && (
